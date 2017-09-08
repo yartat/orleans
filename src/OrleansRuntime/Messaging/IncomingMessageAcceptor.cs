@@ -501,7 +501,7 @@ namespace Orleans.Runtime.Messaging
 
                 if (Log.IsVerbose2) Log.Verbose2("Responding to Ping from {0}", msg.SendingSilo);
 
-                if (!msg.TargetSilo.Equals(MessageCenter.MyAddress)) // got ping that is not destined to me. For example, got a ping to my older incarnation.
+                if (!(msg.TargetSilo.Equals(MessageCenter.MyAddress) || msg.TargetSilo.Equals(MessageCenter.MyHostAddress))) // got ping that is not destined to me. For example, got a ping to my older incarnation.
                 {
                     MessagingStatisticsGroup.OnRejectedMessage(msg);
                     Message rejection = this.MessageFactory.CreateRejectionResponse(msg, Message.RejectionTypes.Unrecoverable,
@@ -543,7 +543,7 @@ namespace Orleans.Runtime.Messaging
 
             // Make sure the message is for us. Note that some control messages may have no target
             // information, so a null target silo is OK.
-            if ((msg.TargetSilo == null) || msg.TargetSilo.Matches(MessageCenter.MyAddress))
+            if ((msg.TargetSilo == null) || msg.TargetSilo.Matches(MessageCenter.MyAddress) || msg.TargetSilo.Matches(MessageCenter.MyHostAddress))
             {
                 // See if it's a message for a client we're proxying.
                 if (MessageCenter.IsProxying && MessageCenter.TryDeliverToProxy(msg)) return;
@@ -553,7 +553,7 @@ namespace Orleans.Runtime.Messaging
                 return;
             }
 
-            if (!msg.TargetSilo.Endpoint.Equals(MessageCenter.MyAddress.Endpoint))
+            if (!(msg.TargetSilo.Endpoint.Equals(MessageCenter.MyHostAddress?.Endpoint) || msg.TargetSilo.Endpoint.Equals(MessageCenter.MyAddress.Endpoint)))
             {
                 // If the message is for some other silo altogether, then we need to forward it.
                 if (Log.IsVerbose2) Log.Verbose2("Forwarding message {0} from {1} to silo {2}", msg.Id, msg.SendingSilo, msg.TargetSilo);

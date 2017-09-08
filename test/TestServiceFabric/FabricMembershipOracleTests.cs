@@ -186,6 +186,7 @@ namespace TestServiceFabric
         {
             public string Name { get; set; }
             public SiloAddress SiloAddress { get; set; }
+            public SiloAddress HostSiloAddress { get; set; }
         }
 
         private void AssertStatus(SiloStatus expected)

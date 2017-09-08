@@ -62,6 +62,11 @@ namespace Orleans.Runtime
             }
 
             this.SiloAddress = SiloAddress.New(this.NodeConfig.Endpoint, this.NodeConfig.Generation);
+            if (NodeConfig.HostEndpoint != null)
+            {
+                this.HostSiloAddress = SiloAddress.New(this.NodeConfig.HostEndpoint, this.NodeConfig.Generation);
+            }
+
             this.Type = this.NodeConfig.IsPrimaryNode ? Silo.SiloType.Primary : Silo.SiloType.Secondary;
         }
 
@@ -94,5 +99,10 @@ namespace Orleans.Runtime
         /// Gets the address of this silo's inter-silo endpoint.
         /// </summary>
         public SiloAddress SiloAddress { get; }
+
+        /// <summary>
+        /// Gets the address of this silo's inter-silo endpoint in case silo was started in docker.
+        /// </summary>
+        public SiloAddress HostSiloAddress { get; }
     }
 }

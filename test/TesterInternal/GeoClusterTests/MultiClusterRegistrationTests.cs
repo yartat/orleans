@@ -280,7 +280,7 @@ namespace UnitTests.GeoClusterTests
                 return random.Next();
         }
 
-      
+        [Fact]
         public async Task SequentialCalls()
         {
             await Task.Yield();
@@ -311,6 +311,7 @@ namespace UnitTests.GeoClusterTests
             AssertEqual(list.Count + 1, Clients[0][0].CallGrain(x), gref);
         }
 
+        [Fact]
         public async Task ManyParallelCalls()
         {
             await Task.Yield();
@@ -337,7 +338,7 @@ namespace UnitTests.GeoClusterTests
             var id = Clients[0][0].GetRuntimeId(x);
 
             WriteLog("Grain {0} at {1}", gref, id);
-            Assert.True(Clusters[ClusterNames[0]].Silos.Any(silo => silo.SiloAddress.ToString() == id));
+            Assert.Contains(Clusters[ClusterNames[0]].Silos, silo => silo.SiloAddress.ToString() == id);
 
             // ensure presence in all caches
             var list = EnumerateClients().ToList();
@@ -361,7 +362,7 @@ namespace UnitTests.GeoClusterTests
             AssertEqual(1, val, gref);
             var newid = Clients[1][0].GetRuntimeId(x);
             WriteLog("{2} sees Grain {0} at {1}", gref, newid, ClusterNames[1]);
-            Assert.True(Clusters[ClusterNames[1]].Silos.Any(silo => silo.SiloAddress.ToString() == newid));
+            Assert.Contains(Clusters[ClusterNames[1]].Silos, silo => silo.SiloAddress.ToString() == newid);
 
             WriteLog("Grain {0} Check that other clusters find new activation.", gref);
             for (int i = 2; i < Clusters.Count; i++)
@@ -372,7 +373,7 @@ namespace UnitTests.GeoClusterTests
             }
         }
 
-
+        [Fact]
         public async Task ObserverBasedClientNotification()
         {
             var x = Next();
@@ -471,7 +472,7 @@ namespace UnitTests.GeoClusterTests
                 var id = Clients[0][0].GetRuntimeId(x);
 
                 WriteLog("Grain {0} at {1}", gref, id);
-                Assert.True(Clusters[ClusterNames[0]].Silos.Any(silo => silo.SiloAddress.ToString() == id));
+                Assert.Contains(Clusters[ClusterNames[0]].Silos, silo => silo.SiloAddress.ToString() == id);
 
                 var id2 = Clients[1][0].GetRuntimeId(x);
                 AssertEqual(id2, id, gref);

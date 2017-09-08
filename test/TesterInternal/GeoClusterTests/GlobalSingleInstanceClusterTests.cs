@@ -354,6 +354,7 @@ namespace Tests.GeoClusterTests
         // so they both activate an instance
         // and one of them deactivated once communication is unblocked
 
+        [Fact]
         public async Task ConflictResolution()
         {
             int offset = random.Next();

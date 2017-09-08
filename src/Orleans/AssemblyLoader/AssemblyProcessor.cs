@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace Orleans.Runtime
 {
     using System;
@@ -157,7 +159,7 @@ namespace Orleans.Runtime
             }
 
             // Process each type in the assembly.
-            var assemblyTypes = TypeUtils.GetDefinedTypes(assembly, this.logger).ToArray();
+            var assemblyTypes = TypeUtils.GetDefinedTypes(assembly, this.logger, false).ToArray();
 
             // Process each type in the assembly.
             foreach (TypeInfo typeInfo in assemblyTypes)
@@ -174,6 +176,7 @@ namespace Orleans.Runtime
                     this.serializationManager.FindSerializationInfo(type);
                     this.typeCache.FindSupportClasses(type);
                 }
+                catch (FileNotFoundException) { }
                 catch (Exception exception)
                 {
                     this.logger.Error(ErrorCode.SerMgr_TypeRegistrationFailure, "Failed to load type " + typeInfo.FullName + " in assembly " + assembly.FullName + ".", exception);

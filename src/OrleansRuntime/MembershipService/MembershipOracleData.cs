@@ -22,6 +22,7 @@ namespace Orleans.Runtime.MembershipService
 
         internal readonly DateTime SiloStartTime;
         internal readonly SiloAddress MyAddress;
+        internal readonly SiloAddress MyHostAddress;
         internal readonly string MyHostname;
         internal SiloStatus CurrentStatus { get; private set; } // current status of this silo.
         internal string SiloName { get; private set; } // name of this silo.
@@ -43,6 +44,7 @@ namespace Orleans.Runtime.MembershipService
             
             SiloStartTime = DateTime.UtcNow;
             MyAddress = siloDetails.SiloAddress;
+            MyHostAddress = siloDetails.HostSiloAddress;
             MyHostname = nodeConfiguration.DNSHostName;
             SiloName = siloDetails.Name;
             this.multiClusterActive = globalConfig.HasMultiClusterNetwork;
@@ -62,7 +64,7 @@ namespace Orleans.Runtime.MembershipService
         internal SiloStatus GetApproximateSiloStatus(SiloAddress siloAddress)
         {
             var status = SiloStatus.None;
-            if (siloAddress.Equals(MyAddress))
+            if (siloAddress.Equals(MyAddress) || siloAddress.Equals(MyHostAddress))
             {
                 status = CurrentStatus;
             }
@@ -95,7 +97,7 @@ namespace Orleans.Runtime.MembershipService
 
         internal bool TryGetSiloName(SiloAddress siloAddress, out string siloName)
         {
-            if (siloAddress.Equals(MyAddress))
+            if (siloAddress.Equals(MyAddress) || siloAddress.Equals(MyHostAddress))
             {
                 siloName = SiloName;
                 return true;
@@ -135,14 +137,26 @@ namespace Orleans.Runtime.MembershipService
             CurrentStatus = status;
 
             tmpLocalTableCopy[MyAddress] = status;
+            if (MyHostAddress != null)
+            {
+                tmpLocalTableCopy[MyHostAddress] = status;
+            }
 
             if (status == SiloStatus.Active)
             {
                 tmpLocalTableCopyOnlyActive[MyAddress] = status;
+                if (MyHostAddress != null)
+                {
+                    tmpLocalTableCopyOnlyActive[MyHostAddress] = status;
+                }
             }
             else if (tmpLocalTableCopyOnlyActive.ContainsKey(MyAddress))
             {
                 tmpLocalTableCopyOnlyActive.Remove(MyAddress);
+                if (MyHostAddress != null)
+                {
+                    tmpLocalTableCopyOnlyActive.Remove(MyHostAddress);
+                }
             }
             localTableCopy = tmpLocalTableCopy;
             localTableCopyOnlyActive = tmpLocalTableCopyOnlyActive;
@@ -151,12 +165,12 @@ namespace Orleans.Runtime.MembershipService
             if (this.multiClusterActive)
                 localMultiClusterGatewaysCopy = DetermineMultiClusterGateways();
 
-            NotifyLocalSubscribers(MyAddress, CurrentStatus);
+            NotifyLocalSubscribers(MyHostAddress ?? MyAddress, CurrentStatus);
         }
 
         private SiloStatus GetSiloStatus(SiloAddress siloAddress)
         {
-            if (siloAddress.Equals(MyAddress))
+            if (siloAddress.Equals(MyAddress) || siloAddress.Equals(MyHostAddress))
                 return CurrentStatus;
             
             MembershipEntry data;
@@ -174,14 +188,20 @@ namespace Orleans.Runtime.MembershipService
                 pair => filter(pair.Value.Status)).ToDictionary(pair => pair.Key, pair => pair.Value.Status);
 
             if (includeMyself && filter(CurrentStatus)) // add myself
+            {
                 dict.Add(MyAddress, CurrentStatus);
-            
+                if (MyHostAddress != null)
+                {
+                    dict.Add(MyHostAddress, CurrentStatus);
+                }
+            }
+
             return dict;
         }
 
         internal MembershipEntry CreateNewMembershipEntry(NodeConfiguration nodeConf, SiloStatus myStatus)
         {
-            return CreateNewMembershipEntry(nodeConf, MyAddress, MyHostname, myStatus, SiloStartTime);
+            return CreateNewMembershipEntry(nodeConf, MyHostAddress ?? MyAddress, MyHostname, myStatus, SiloStartTime);
         }
 
         private static MembershipEntry CreateNewMembershipEntry(NodeConfiguration nodeConf, SiloAddress myAddress, string myHostname, SiloStatus myStatus, DateTime startTime)
@@ -197,7 +217,7 @@ namespace Orleans.Runtime.MembershipService
                 SiloName = nodeConf.SiloName,
 
                 Status = myStatus,
-                ProxyPort = (nodeConf.IsGatewayNode ? nodeConf.ProxyGatewayEndpoint.Port : 0),
+                ProxyPort = (nodeConf.IsGatewayNode ? nodeConf.HostProxyGatewayEndpoint?.Port ?? nodeConf.ProxyGatewayEndpoint.Port : 0),
 
                 RoleName = roleName,
                 
@@ -288,7 +308,7 @@ namespace Orleans.Runtime.MembershipService
             return DeterministicBalancedChoice<SiloAddress, UpdateFaultCombo>(
                 localTableCopyOnlyActive.Keys,
                 this.maxMultiClusterGateways,
-               (SiloAddress a) => a.Equals(MyAddress) ? this.myFaultAndUpdateZones : new UpdateFaultCombo(localTable[a]));
+               (SiloAddress a) => a.Equals(MyAddress) || a.Equals(MyHostAddress) ? this.myFaultAndUpdateZones : new UpdateFaultCombo(localTable[a]));
         }
 
         // pick a specified number of elements from a set of candidates

@@ -21,7 +21,11 @@ namespace Orleans.Runtime
             AppDomain.CurrentDomain.ReflectionOnlyAssemblyResolve += OnReflectionOnlyAssemblyResolve;
             try
             {
+#if NETSTANDARD2_0
+                type = Type.GetType(name, false, false);
+#else
                 type = Type.ReflectionOnlyGetType(name, false, false);
+#endif
                 return type != null;
             }
             finally
@@ -43,7 +47,11 @@ namespace Orleans.Runtime
             try
             {
                 var name = AppDomain.CurrentDomain.ApplyPolicy(args.Name);
+#if NETSTANDARD2_0
+                return Assembly.Load(name);
+#else
                 return Assembly.ReflectionOnlyLoad(name);
+#endif
             }
             catch (IOException)
             {
@@ -64,7 +72,11 @@ namespace Orleans.Runtime
 
                 try
                 {
+#if NETSTANDARD2_0
+                    return Assembly.LoadFrom(pathName);
+#else
                     return Assembly.ReflectionOnlyLoadFrom(pathName);
+#endif
                 }
                 catch (FileNotFoundException)
                 {

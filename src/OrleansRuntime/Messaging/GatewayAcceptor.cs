@@ -102,7 +102,7 @@ namespace Orleans.Runtime.Messaging
             }
 
             SiloAddress targetAddress = gateway.TryToReroute(msg);
-            msg.SendingSilo = MessageCenter.MyAddress;
+            msg.SendingSilo = MessageCenter.MyHostAddress ?? MessageCenter.MyAddress;
 
             if (targetAddress == null)
             {
@@ -113,8 +113,8 @@ namespace Orleans.Runtime.Messaging
 
                 if (msg.TargetGrain.IsSystemTarget)
                 {
-                    msg.TargetSilo = MessageCenter.MyAddress;
-                    msg.TargetActivation = ActivationId.GetSystemActivation(msg.TargetGrain, MessageCenter.MyAddress);
+                    msg.TargetSilo = MessageCenter.MyHostAddress ?? MessageCenter.MyAddress;
+                    msg.TargetActivation = ActivationId.GetSystemActivation(msg.TargetGrain, MessageCenter.MyHostAddress ?? MessageCenter.MyAddress);
                 }
 
                 MessagingStatisticsGroup.OnMessageReRoute(msg);

@@ -4,6 +4,8 @@ namespace Orleans.Runtime.Messaging
 {
     internal interface ISiloMessageCenter : IMessageCenter
     {
+        SiloAddress MyHostAddress { get; }
+
         Action<Message> RerouteHandler { set; }
 
         Action<Message> SniffIncomingMessage { set; }

@@ -322,6 +322,26 @@ namespace Orleans.Runtime.Host
         }
 
         /// <summary>
+        /// Set the docker host endpoint address for this silo.
+        /// </summary>
+        /// <param name="endpoint">IP address and port of the main inter-silo socket connection.</param>
+        public void SetDockerHostEndpoint(IPEndPoint endpoint)
+        {
+            logger.Info(ErrorCode.SiloSetSiloEndpoint, "Setting silo docker host endpoint address to {0}", endpoint);
+            NodeConfig.HostEndpoint = endpoint;
+        }
+
+        /// <summary>
+        /// Set the docker host gateway proxy endpoint address for this silo.
+        /// </summary>
+        /// <param name="endpoint">IP address of the gateway socket connection.</param>
+        public void SetDockerHostProxyEndpoint(IPEndPoint endpoint)
+        {
+            logger.Info(ErrorCode.SiloSetProxyEndpoint, "Setting silo docker proxy endpoint address to {0}", endpoint);
+            NodeConfig.HostProxyGatewayEndpoint = endpoint;
+        }
+
+        /// <summary>
         /// Set the seed node endpoint address to be used by silo.
         /// </summary>
         /// <param name="endpoint">IP address of the inter-silo connection socket on the seed node silo.</param>

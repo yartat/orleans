@@ -172,7 +172,7 @@ namespace Orleans
 
         public Tuple<MembershipEntry, string> Get(SiloAddress silo)
         {
-            return Members.First(tuple => tuple.Item1.SiloAddress.Equals(silo));
+            return Members.FirstOrDefault(tuple => tuple.Item1.SiloAddress.Equals(silo));
         }
 
         public bool Contains(SiloAddress silo)

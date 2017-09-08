@@ -364,7 +364,7 @@ namespace Orleans.CodeGenerator
                 KnownAssemblyAttribute knownAssemblyAttribute;
                 var considerAllTypesForSerialization = knownAssemblyAttributes.TryGetValue(assembly, out knownAssemblyAttribute)
                                           && knownAssemblyAttribute.TreatTypesAsSerializable;
-                foreach (var type in TypeUtils.GetDefinedTypes(assembly, Logger))
+                foreach (var type in TypeUtils.GetDefinedTypes(assembly, Logger, true))
                 {
                     var considerForSerialization = considerAllTypesForSerialization || type.IsSerializable;
                     ConsiderType(type.AsType(), runtime, targetAssembly, includedTypes, considerForSerialization);
@@ -544,7 +544,7 @@ namespace Orleans.CodeGenerator
             var all =
                 AppDomain.CurrentDomain.GetAssemblies()
                     .Where(assemblies => assemblies.GetCustomAttribute<GeneratedCodeAttribute>() != null)
-                    .SelectMany(assembly => TypeUtils.GetDefinedTypes(assembly, Logger));
+                    .SelectMany(assembly => TypeUtils.GetDefinedTypes(assembly, Logger, true));
 
             // Get all generated types in each assembly.
             var attributes = all.SelectMany(_ => _.GetCustomAttributes<GeneratedAttribute>());

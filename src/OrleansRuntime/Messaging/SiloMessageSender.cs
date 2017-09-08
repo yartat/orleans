@@ -42,7 +42,7 @@ namespace Orleans.Runtime.Messaging
 
             // Fill in the outbound message with our silo address, if it's not already set
             if (msg.SendingSilo == null)
-                msg.SendingSilo = messageCenter.MyAddress;
+                msg.SendingSilo = messageCenter.MyHostAddress ?? messageCenter.MyAddress;
             
 
             // If there's no target silo set, then we shouldn't see this message; send it back
@@ -156,12 +156,15 @@ namespace Orleans.Runtime.Messaging
             MessagingStatisticsGroup.OnFailedSentMessage(msg);
             if (msg.Direction == Message.Directions.Request)
             {
-                if (Log.IsVerbose) Log.Verbose(ErrorCode.MessagingSendingRejection, "Silo {0} is rejecting message: {0}. Reason = {1}", messageCenter.MyAddress, msg, reason);
+                if (Log.IsVerbose) Log.Verbose(ErrorCode.MessagingSendingRejection, "Silo {0}{1} is rejecting message: {2}. Reason = {3}", 
+                    messageCenter.MyAddress, messageCenter.MyHostAddress != null ? $"(hosted in {messageCenter.MyHostAddress})" : string.Empty, msg, reason);
                 // Done retrying, send back an error instead
-                messageCenter.SendRejection(msg, Message.RejectionTypes.Transient, String.Format("Silo {0} is rejecting message: {1}. Reason = {2}", messageCenter.MyAddress, msg, reason));
+                messageCenter.SendRejection(msg, Message.RejectionTypes.Transient, String.Format("Silo {0}{1} is rejecting message: {2}. Reason = {3}", 
+                    messageCenter.MyAddress, messageCenter.MyHostAddress != null ? $"(hosted in {messageCenter.MyHostAddress})" : string.Empty, msg, reason));
             }else
             {
-                Log.Info(ErrorCode.Messaging_OutgoingMS_DroppingMessage, "Silo {0} is dropping message: {0}. Reason = {1}", messageCenter.MyAddress, msg, reason);
+                Log.Info(ErrorCode.Messaging_OutgoingMS_DroppingMessage, "Silo {0}{1} is dropping message: {2}. Reason = {3}", 
+                    messageCenter.MyAddress, messageCenter.MyHostAddress != null ? $"(hosted in {messageCenter.MyHostAddress})" : string.Empty, msg, reason);
                 MessagingStatisticsGroup.OnDroppedSentMessage(msg);
             }
         }

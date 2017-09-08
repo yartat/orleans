@@ -62,6 +62,17 @@ namespace Orleans.Runtime.Configuration
         {
             get { return new IPEndPoint(Address, Port); }
         }
+
+        /// <summary>
+        /// Gets or sets the silo host endpoint uses for silo-to-silo communication in case silo was started inside docker container.
+        /// </summary>
+        public IPEndPoint HostEndpoint { get; set; }
+
+        /// <summary>
+        /// Gets or sets the silo host endpoint uses for (gateway) silo-to-client communication in case silo was started inside docker container.
+        /// </summary>
+        public IPEndPoint HostProxyGatewayEndpoint { get; set; }
+
         /// <summary>
         /// The AddressFamilyof the IP address of this silo.
         /// </summary>
@@ -239,6 +250,8 @@ namespace Orleans.Runtime.Configuration
             Generation = 0;
             AddressType = AddressFamily.InterNetwork;
             ProxyGatewayEndpoint = null;
+            HostEndpoint = null;
+            HostProxyGatewayEndpoint = null;
 
             MaxActiveThreads = DEFAULT_MAX_ACTIVE_THREADS;
             DelayWarningThreshold = TimeSpan.FromMilliseconds(10000); // 10,000 milliseconds
@@ -287,6 +300,8 @@ namespace Orleans.Runtime.Configuration
             Generation = other.Generation;
             AddressType = other.AddressType;
             ProxyGatewayEndpoint = other.ProxyGatewayEndpoint;
+            HostEndpoint = other.HostEndpoint;
+            HostProxyGatewayEndpoint = other.HostProxyGatewayEndpoint;
 
             MaxActiveThreads = other.MaxActiveThreads;
             DelayWarningThreshold = other.DelayWarningThreshold;
@@ -337,6 +352,10 @@ namespace Orleans.Runtime.Configuration
             sb.Append("   DNS Host Name: ").AppendLine(DNSHostName);
             sb.Append("   Port: ").Append(Port).AppendLine();
             sb.Append("   Subnet: ").Append(Subnet == null ? "" : Subnet.ToStrings(x => x.ToString(), ".")).AppendLine();
+            if (HostEndpoint != null)
+            {
+                sb.Append("   External host endpoint: ").Append(HostEndpoint.ToString()).AppendLine();
+            }
             sb.Append("   Preferred Address Family: ").Append(AddressType).AppendLine();
             if (IsGatewayNode)
             {
@@ -345,6 +364,10 @@ namespace Orleans.Runtime.Configuration
             else
             {
                 sb.Append("   IsGatewayNode: ").Append(IsGatewayNode).AppendLine();
+            }
+            if (HostProxyGatewayEndpoint != null)
+            {
+                sb.Append("   External host Proxy Gateway: ").Append(HostProxyGatewayEndpoint.ToString()).AppendLine();
             }
             sb.Append("   IsPrimaryNode: ").Append(IsPrimaryNode).AppendLine();
             sb.Append("   Scheduler: ").AppendLine();
@@ -402,8 +425,14 @@ namespace Orleans.Runtime.Configuration
                                 "Invalid preferred address family on Networking node. Valid choices are 'InterNetwork' and 'InterNetworkV6'");
                         }
                         break;
+                    case "HostNetworking":
+                        HostEndpoint = ConfigUtilities.ParseIPEndPoint(child, Subnet).GetResult();
+                        break;
                     case "ProxyingGateway":
                         ProxyGatewayEndpoint = ConfigUtilities.ParseIPEndPoint(child, Subnet).GetResult();
+                        break;
+                    case "HostProxyingGateway":
+                        HostProxyGatewayEndpoint = ConfigUtilities.ParseIPEndPoint(child, Subnet).GetResult();
                         break;
                     case "Scheduler":
                         if (child.HasAttribute("MaxActiveThreads"))

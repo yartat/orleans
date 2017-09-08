@@ -73,7 +73,7 @@ namespace Orleans.Runtime
         public IDictionary<string, GrainTypeData> GetGrainClassTypes()
         {
             var result = new Dictionary<string, GrainTypeData>();
-            Type[] grainTypes = TypeUtils.GetTypes(TypeUtils.IsConcreteGrainClass, logger).ToArray();
+            Type[] grainTypes = TypeUtils.GetTypes(TypeUtils.IsConcreteGrainClass, logger, false).ToArray();
 
             foreach (var grainType in grainTypes)
             {
@@ -121,7 +121,7 @@ namespace Orleans.Runtime
         public IEnumerable<KeyValuePair<int, Type>> GetGrainMethodInvokerTypes()
         {
             var result = new Dictionary<int, Type>();
-            Type[] types = TypeUtils.GetTypes(TypeUtils.IsGrainMethodInvokerType, logger).ToArray();
+            Type[] types = TypeUtils.GetTypes(TypeUtils.IsGrainMethodInvokerType, logger, false).ToArray();
 
             foreach (var type in types)
             {

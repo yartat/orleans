@@ -764,7 +764,7 @@ namespace Orleans.Runtime
 
             if (message.TargetSilo == null)
             {
-                message.TargetSilo = Transport.MyAddress;
+                message.TargetSilo = Transport.MyHostAddress ?? Transport.MyAddress;
             }
             if (message.TargetActivation == null)
             {

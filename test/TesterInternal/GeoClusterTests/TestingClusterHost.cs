@@ -81,7 +81,7 @@ namespace Tests.GeoClusterTests
                 throw;
             }
         }
-        public void AssertNull<T>(T actual, string comment)
+        public void AssertNull<T>(T actual, string comment) where T : class
         {
             try
             {

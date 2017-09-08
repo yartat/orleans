@@ -85,7 +85,7 @@ namespace Orleans.Runtime.Messaging
             }
 
             // Shortcut messages to this silo
-            if (msg.TargetSilo.Equals(messageCenter.MyAddress))
+            if (msg.TargetSilo.Equals(messageCenter.MyAddress) || msg.TargetSilo.Equals(messageCenter.MyHostAddress))
             {
                 if (logger.IsVerbose3) logger.Verbose3("Message has been looped back to this silo: {0}", msg);
                 MessagingStatisticsGroup.LocalMessagesSent.Increment();

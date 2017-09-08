@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Orleans.Runtime.Configuration;
 using Orleans.Runtime.Messaging;
@@ -19,6 +20,7 @@ namespace Orleans.Runtime.MembershipService
         private readonly ClusterConfiguration orleansConfig;
         private readonly NodeConfiguration nodeConfig;
         private SiloAddress MyAddress { get { return membershipOracleData.MyAddress; } }
+        private SiloAddress MyHostAddress { get { return membershipOracleData.MyHostAddress; } }
         private GrainTimer timerGetTableUpdates;
         private GrainTimer timerProbeOtherSilos;
         private GrainTimer timerIAmAliveUpdateInTable;
@@ -60,7 +62,12 @@ namespace Orleans.Runtime.MembershipService
         {
             try
             {
-                logger.Info(ErrorCode.MembershipStarting, "MembershipOracle starting on host = " + membershipOracleData.MyHostname + " address = " + MyAddress.ToLongString() + " at " + LogFormatter.PrintDate(membershipOracleData.SiloStartTime) + ", backOffMax = " + EXP_BACKOFF_CONTENTION_MAX);
+                logger.Info(ErrorCode.MembershipStarting,
+                    "MembershipOracle starting on host = " + membershipOracleData.MyHostname + " address = " +
+                    MyAddress.ToLongString() +
+                    (MyHostAddress != null ? "(hosting on " + MyHostAddress.ToLongString() + ")" : string.Empty) +
+                    " at " + LogFormatter.PrintDate(membershipOracleData.SiloStartTime) + ", backOffMax = " +
+                    EXP_BACKOFF_CONTENTION_MAX);
 
                 // Create the membership table.
                 this.membershipTableProvider = await this.membershipTableFactory.GetMembershipTable();
@@ -110,17 +117,18 @@ namespace Orleans.Runtime.MembershipService
 
             if (mostRecentPreviousEntry != null)
             {
-                bool physicalHostChanged = !myHostname.Equals(mostRecentPreviousEntry.HostName) || !MyAddress.Endpoint.Equals(mostRecentPreviousEntry.SiloAddress.Endpoint);
+                bool physicalHostChanged = !myHostname.Equals(mostRecentPreviousEntry.HostName) || !MyAddress.Endpoint.Equals(mostRecentPreviousEntry.SiloAddress.Endpoint) ||
+                                           !(MyHostAddress?.Endpoint.Equals(mostRecentPreviousEntry.SiloAddress.Endpoint) ?? true);
                 if (physicalHostChanged)
                 {
-                    string error = String.Format("Silo {0} migrated from host {1} silo address {2} to host {3} silo address {4}.",
-                        mySiloName, myHostname, MyAddress.ToLongString(), mostRecentPreviousEntry.HostName, mostRecentPreviousEntry.SiloAddress.ToLongString());
+                    string error = String.Format("Silo {0} migrated from host {1} silo address {2}{3}to host {4} silo address {5}.",
+                        mySiloName, myHostname, MyAddress.ToLongString(), MyHostAddress != null ? $" (hosted in {MyHostAddress.ToLongString()}) " : " ", mostRecentPreviousEntry.HostName, mostRecentPreviousEntry.SiloAddress.ToLongString());
                     logger.Warn(ErrorCode.MembershipNodeMigrated, error);
                 }
                 else
                 {
-                    string error = String.Format("Silo {0} restarted on same host {1} New silo address = {2} Previous silo address = {3}",
-                        mySiloName, myHostname, MyAddress.ToLongString(), mostRecentPreviousEntry.SiloAddress.ToLongString());
+                    string error = String.Format("Silo {0} restarted on same host {1} New silo address = {2}{3}Previous silo address = {4}",
+                        mySiloName, myHostname, MyAddress.ToLongString(), MyHostAddress != null ? $" (hosted in {MyHostAddress.ToLongString()}) " : " ", mostRecentPreviousEntry.SiloAddress.ToLongString());
                     logger.Warn(ErrorCode.MembershipNodeRestarted, error);
                 }
             }
@@ -279,7 +287,7 @@ namespace Orleans.Runtime.MembershipService
 
         public bool IsFunctionalDirectory(SiloAddress silo)
         {
-            if (silo.Equals(MyAddress)) return true;
+            if (silo.Equals(MyAddress) || silo.Equals(MyHostAddress)) return true;
 
             var status = membershipOracleData.GetApproximateSiloStatus(silo);
             return !status.IsTerminating();
@@ -287,7 +295,7 @@ namespace Orleans.Runtime.MembershipService
 
         public bool IsDeadSilo(SiloAddress silo)
         {
-            if (silo.Equals(MyAddress)) return false;
+            if (silo.Equals(MyAddress) || silo.Equals(MyHostAddress)) return false;
 
             var status = membershipOracleData.GetApproximateSiloStatus(silo);
             return status == SiloStatus.Dead;
@@ -388,14 +396,15 @@ namespace Orleans.Runtime.MembershipService
 
                 if (ok)
                 {
-                    if (logger.IsVerbose) logger.Verbose("-Silo {0} Successfully updated my Status in the Membership table to {1}", MyAddress.ToLongString(), status);
+                    if (logger.IsVerbose) logger.Verbose("-Silo {0}{1}Successfully updated my Status in the Membership table to {2}", 
+                        MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : " ", status);
                     membershipOracleData.UpdateMyStatusLocal(status);
                     GossipMyStatus();
                 }
                 else
                 {
-                    errorString = String.Format("-Silo {0} failed to update its status to {1} in the Membership table due to write contention on the table after {2} attempts.",
-                        MyAddress.ToLongString(), status, numCalls);
+                    errorString = String.Format("-Silo {0}{1}failed to update its status to {2} in the Membership table due to write contention on the table after {3} attempts.",
+                        MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : " ", status, numCalls);
                     logger.Error(ErrorCode.MembershipFailedToWriteConditional, errorString);
                     throw new OrleansException(errorString);
                 }
@@ -404,7 +413,8 @@ namespace Orleans.Runtime.MembershipService
             {
                 if (errorString == null)
                 {
-                    errorString = String.Format("-Silo {0} failed to update its status to {1} in the table due to failures (socket failures or table read/write failures) after {2} attempts: {3}", MyAddress.ToLongString(), status, numCalls, exc.Message);
+                    errorString = String.Format("-Silo {0}{1} failed to update its status to {2} in the table due to failures (socket failures or table read/write failures) after {3} attempts: {4}", 
+                        MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : " ", status, numCalls, exc.Message);
                     logger.Error(ErrorCode.MembershipFailedToWrite, errorString);
                     throw new OrleansException(errorString, exc);
                 }
@@ -427,7 +437,7 @@ namespace Orleans.Runtime.MembershipService
             }
             else
             {
-                table = await membershipTableProvider.ReadRow(MyAddress);
+                table = await membershipTableProvider.ReadRow(MyHostAddress ?? MyAddress);
             }
 
             if (logger.IsVerbose) logger.Verbose("-TryUpdateMyStatusGlobalOnce: Read{0} Membership table {1}", (newStatus.Equals(SiloStatus.Active) ? "All" : " my entry from"), table.ToString());
@@ -435,9 +445,9 @@ namespace Orleans.Runtime.MembershipService
 
             MembershipEntry myEntry;
             string myEtag = null;
-            if (table.Contains(MyAddress))
+            if (table.Contains(MyHostAddress) || table.Contains(MyAddress))
             {
-                var myTuple = table.Get(MyAddress);
+                var myTuple = table.Get(MyHostAddress) ?? table.Get(MyAddress);
                 myEntry = myTuple.Item1;
                 myEtag = myTuple.Item2;
                 myEntry.TryUpdateStartTime(membershipOracleData.SiloStartTime);
@@ -456,8 +466,14 @@ namespace Orleans.Runtime.MembershipService
 
             var now = DateTime.UtcNow;
             if (newStatus == SiloStatus.Dead)
+            {
                 myEntry.AddSuspector(MyAddress, now); // add the killer (myself) to the suspect list, for easier diagnostics later on.
-            
+                if (MyHostAddress != null)
+                {
+                    myEntry.AddSuspector(MyHostAddress, now); // add the killer (myself host) to the suspect list, for easier diagnostics later on.
+                }
+            }
+
             myEntry.Status = newStatus;
             myEntry.IAmAliveTime = now;
 
@@ -476,7 +492,7 @@ namespace Orleans.Runtime.MembershipService
             // send pings to all Active nodes, that are known to be alive
             List<MembershipEntry> members = table.Members.Select(tuple => tuple.Item1).Where(
                 entry => entry.Status == SiloStatus.Active &&
-                        !entry.SiloAddress.Equals(MyAddress) &&
+                        !(entry.SiloAddress.Equals(MyAddress) || entry.SiloAddress.Equals(MyHostAddress)) &&
                         !HasMissedIAmAlives(entry, false)).ToList();
 
             logger.LogWithoutBulkingAndTruncating(Severity.Info, ErrorCode.MembershipSendingPreJoinPing, "About to send pings to {0} nodes in order to validate communication in the Joining state. Pinged nodes = {1}",
@@ -540,7 +556,7 @@ namespace Orleans.Runtime.MembershipService
             {
                 foreach (var entry in table.Members.Select(tuple => tuple.Item1))
                 {
-                    if (!entry.SiloAddress.Endpoint.Equals(MyAddress.Endpoint))
+                    if (!(entry.SiloAddress.Endpoint.Equals(MyAddress.Endpoint) || entry.SiloAddress.Endpoint.Equals(MyHostAddress?.Endpoint)))
                     {
                         bool changed = membershipOracleData.TryUpdateStatusAndNotify(entry);
                         localViewChanged = localViewChanged || changed;
@@ -563,7 +579,7 @@ namespace Orleans.Runtime.MembershipService
         private void CheckMissedIAmAlives(MembershipTableData table)
         {
             foreach (var entry in table.Members.Select(tuple => tuple.Item1).
-                                                            Where(entry => !entry.SiloAddress.Equals(MyAddress)).
+                                                            Where(entry => !(entry.SiloAddress.Equals(MyAddress) || entry.SiloAddress.Equals(MyHostAddress))).
                                                             Where(entry => entry.Status == SiloStatus.Active))
             {
                 HasMissedIAmAlives(entry, true);
@@ -597,7 +613,7 @@ namespace Orleans.Runtime.MembershipService
         {
             var silosToDeclareDead = new List<Tuple<MembershipEntry, string>>();
             foreach (var tuple in table.Members.Where(
-                tuple => tuple.Item1.SiloAddress.Endpoint.Equals(MyAddress.Endpoint)))
+                tuple => tuple.Item1.SiloAddress.Endpoint.Equals(MyAddress.Endpoint) || tuple.Item1.SiloAddress.Endpoint.Equals(MyHostAddress?.Endpoint)))
             {
                 var entry = tuple.Item1;
                 var siloAddress = entry.SiloAddress;
@@ -619,22 +635,24 @@ namespace Orleans.Runtime.MembershipService
                     continue;
                 }
 
-                if (logger.IsVerbose) logger.Verbose("Temporal anomaly detected in membership table -- Me={0} Other me={1}",
-                    MyAddress.ToLongString(), siloAddress.ToLongString());
+                if (logger.IsVerbose) logger.Verbose("Temporal anomaly detected in membership table -- Me={0}{1} Other me={2}",
+                    MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : string.Empty, siloAddress.ToLongString());
 
                 // Temporal paradox - There is an older clone of this silo in the membership table
                 if (siloAddress.Generation < MyAddress.Generation)
                 {
-                    logger.Warn(ErrorCode.MembershipDetectedOlder, "Detected older version of myself - Marking other older clone as Dead -- Current Me={0} Older Me={1}, Old entry= {2}",
-                        MyAddress.ToLongString(), siloAddress.ToLongString(), entry.ToFullString());
+                    logger.Warn(ErrorCode.MembershipDetectedOlder, "Detected older version of myself - Marking other older clone as Dead -- Current Me={0}{1} Older Me={2}, Old entry= {3}",
+                        MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : string.Empty, 
+                        siloAddress.ToLongString(), entry.ToFullString());
                     // Declare older clone of me as Dead.
                     silosToDeclareDead.Add(tuple);   //return DeclareDead(entry, eTag, tableVersion);
                 }
                 else if (siloAddress.Generation > MyAddress.Generation)
                 {
                     // I am the older clone - Newer version of me should survive - I need to kill myself
-                    var msg = string.Format("Detected newer version of myself - I am the older clone so will commit suicide -- Current Me={0} Newer Me={1}, Current entry= {2}",
-                        MyAddress.ToLongString(), siloAddress.ToLongString(), entry.ToFullString());
+                    var msg = string.Format("Detected newer version of myself - I am the older clone so will commit suicide -- Current Me={0}{1} Newer Me={2}, Current entry= {3}",
+                        MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : string.Empty, 
+                        siloAddress.ToLongString(), entry.ToFullString());
                     logger.Warn(ErrorCode.MembershipDetectedNewer, msg);
                     await KillMyself();
                     KillMyselfLocally(msg);
@@ -680,7 +698,7 @@ namespace Orleans.Runtime.MembershipService
 
         private void GossipMyStatus()
         {
-            GossipToOthers(MyAddress, CurrentStatus);
+            GossipToOthers(MyHostAddress ?? MyAddress, CurrentStatus);
         }
 
         private void GossipToOthers(SiloAddress updatedSilo, SiloStatus updatedStatus)
@@ -717,11 +735,12 @@ namespace Orleans.Runtime.MembershipService
 
             tmpList.Sort((x, y) => x.GetConsistentHashCode().CompareTo(y.GetConsistentHashCode()));
 
-            int myIndex = tmpList.FindIndex(el => el.Equals(MyAddress));
+            int myIndex = tmpList.FindIndex(el => el.Equals(MyAddress) || el.Equals(MyHostAddress));
             if (myIndex < 0)
             {
                 // this should not happen ...
-                var error = String.Format("This silo {0} status {1} is not in its own local silo list! This is a bug!", MyAddress.ToLongString(), CurrentStatus);
+                var error = String.Format("This silo {0}{1} status {2} is not in its own local silo list! This is a bug!", 
+                    MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : string.Empty, CurrentStatus);
                 logger.Error(ErrorCode.Runtime_Error_100305, error);
                 throw new Exception(error);
             }
@@ -848,7 +867,7 @@ namespace Orleans.Runtime.MembershipService
 
             var entry = new MembershipEntry
             {
-                SiloAddress = MyAddress,
+                SiloAddress = MyHostAddress ?? MyAddress,
                 IAmAliveTime = DateTime.UtcNow
             };
 
@@ -940,9 +959,9 @@ namespace Orleans.Runtime.MembershipService
             MembershipTableData table = await membershipTableProvider.ReadAll();
 
             if (logger.IsVerbose) logger.Verbose("-TryToSuspectOrKill: Read Membership table {0}", table.ToString());
-            if (table.Contains(MyAddress))
+            if (table.Contains(MyHostAddress) || table.Contains(MyAddress))
             {
-                var myEntry = table.Get(MyAddress).Item1;
+                var myEntry = (table.Get(MyHostAddress) ?? table.Get(MyAddress)).Item1;
                 if (myEntry.Status == SiloStatus.Dead) // check if the table already knows that I am dead
                 {
                     var msg = string.Format("I should be Dead according to membership table (in TryToSuspectOrKill): entry = {0}.", myEntry.ToFullString());
@@ -995,7 +1014,7 @@ namespace Orleans.Runtime.MembershipService
             // handle the corner case when the number of active silos is very small (then my only vote is enough)
             int activeSilos = membershipOracleData.GetSiloStatuses(status => status == SiloStatus.Active, true).Count;
             // find if I have already voted
-            int myVoteIndex = freshVotes.FindIndex(voter => MyAddress.Equals(voter.Item1));
+            int myVoteIndex = freshVotes.FindIndex(voter => MyAddress.Equals(voter.Item1) || (MyHostAddress?.Equals(voter.Item1) ?? false));
 
             // Try to kill:
             //  if there is NumVotesForDeathDeclaration votes (including me) to kill - kill.
@@ -1028,7 +1047,7 @@ namespace Orleans.Runtime.MembershipService
             //      update my vote, if I voted previously
             //      OR if the list is not full - just add a new vote
             //      OR overwrite the oldest entry.
-            int indexToWrite = allVotes.FindIndex(voter => MyAddress.Equals(voter.Item1));
+            int indexToWrite = allVotes.FindIndex(voter => MyAddress.Equals(voter.Item1) || (MyHostAddress?.Equals(voter.Item1) ?? false));
             if (indexToWrite == -1)
             {
                 // My vote is not recorded. Find the most outdated vote if the list is full, and overwrite it
@@ -1045,11 +1064,11 @@ namespace Orleans.Runtime.MembershipService
             if (indexToWrite == -1)
             {
                 // if did not find specific place to write (the list is not full), just add a new element to the list
-                entry.AddSuspector(MyAddress, now);
+                entry.AddSuspector(MyHostAddress ?? MyAddress, now);
             }
             else
             {
-                var newEntry = new Tuple<SiloAddress, DateTime>(MyAddress, now);
+                var newEntry = new Tuple<SiloAddress, DateTime>(MyHostAddress ?? MyAddress, now);
                 entry.SuspectTimes[indexToWrite] = newEntry;
             }
             logger.Info(ErrorCode.MembershipVotingForKill,
@@ -1069,7 +1088,7 @@ namespace Orleans.Runtime.MembershipService
             if (orleansConfig.Globals.LivenessEnabled)
             {
                 // add the killer (myself) to the suspect list, for easier diagnosis later on.
-                entry.AddSuspector(MyAddress, DateTime.UtcNow);
+                entry.AddSuspector(MyHostAddress ?? MyAddress, DateTime.UtcNow);
 
                 if (logger.IsVerbose) logger.Verbose("-Going to DeclareDead silo {0} in the table. About to write entry {1}.", entry.SiloAddress.ToLongString(), entry.ToFullString());
                 entry.Status = SiloStatus.Dead;
@@ -1077,7 +1096,7 @@ namespace Orleans.Runtime.MembershipService
                 if (ok)
                 {
                     if (logger.IsVerbose) logger.Verbose("-Successfully updated {0} status to Dead in the Membership table.", entry.SiloAddress.ToLongString());
-                    if (!entry.SiloAddress.Endpoint.Equals(MyAddress.Endpoint))
+                    if (!(entry.SiloAddress.Endpoint.Equals(MyAddress.Endpoint) || entry.SiloAddress.Endpoint.Equals(MyHostAddress?.Endpoint)))
                     {
                         bool changed = membershipOracleData.TryUpdateStatusAndNotify(entry);
                         if (changed)

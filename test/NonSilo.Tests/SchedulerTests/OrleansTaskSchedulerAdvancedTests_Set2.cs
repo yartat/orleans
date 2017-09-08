@@ -768,6 +768,7 @@ namespace UnitTests.SchedulerTests
         private class MockSiloDetails : ILocalSiloDetails
         {
             public SiloAddress SiloAddress { get; set; }
+            public SiloAddress HostSiloAddress { get; set; }
             public string Name { get; set; } = Guid.NewGuid().ToString();
         }
     }

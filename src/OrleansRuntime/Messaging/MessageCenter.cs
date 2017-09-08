@@ -34,9 +34,10 @@ namespace Orleans.Runtime.Messaging
         {
             return msg.TargetGrain.IsClient && Gateway != null && Gateway.TryDeliverToProxy(msg);
         }
-        
+
         // This is determined by the IMA but needed by the OMS, and so is kept here in the message center itself.
         public SiloAddress MyAddress { get; private set; }
+        public SiloAddress MyHostAddress { get; private set; }
 
         public IMessagingConfiguration MessagingConfiguration { get; private set; }
 
@@ -51,20 +52,25 @@ namespace Orleans.Runtime.Messaging
         {
             this.serializationManager = serializationManager;
             this.messageFactory = messageFactory;
-            this.Initialize(siloDetails.SiloAddress.Endpoint, nodeConfig.Generation, config, metrics);
+            this.Initialize(siloDetails.SiloAddress.Endpoint, nodeConfig.Generation, nodeConfig.HostEndpoint, config, metrics);
             if (nodeConfig.IsGatewayNode)
             {
                 Gateway = gatewayFactory(this);
             }
         }
 
-        private void Initialize(IPEndPoint here, int generation, IMessagingConfiguration config, ISiloPerformanceMetrics metrics = null)
+        private void Initialize(IPEndPoint here, int generation, IPEndPoint hostEndpoint, IMessagingConfiguration config, ISiloPerformanceMetrics metrics = null)
         {
             if(log.IsVerbose3) log.Verbose3("Starting initialization.");
 
             SocketManager = new SocketManager(config);
             ima = new IncomingMessageAcceptor(this, here, SocketDirection.SiloToSilo, this.messageFactory, this.serializationManager);
             MyAddress = SiloAddress.New((IPEndPoint)ima.AcceptingSocket.LocalEndPoint, generation);
+            if (hostEndpoint != null)
+            {
+                MyHostAddress = SiloAddress.New(hostEndpoint, generation);
+            }
+
             MessagingConfiguration = config;
             InboundQueue = new InboundMessageQueue();
             OutboundQueue = new OutboundMessageQueue(this, config, this.serializationManager);
@@ -179,7 +185,7 @@ namespace Orleans.Runtime.Messaging
             else
             {
                 if (msg.SendingSilo == null)
-                    msg.SendingSilo = MyAddress;
+                    msg.SendingSilo = MyHostAddress ?? MyAddress;
                 OutboundQueue.SendMessage(msg);
             }
         }
@@ -187,7 +193,8 @@ namespace Orleans.Runtime.Messaging
         internal void SendRejection(Message msg, Message.RejectionTypes rejectionType, string reason)
         {
             MessagingStatisticsGroup.OnRejectedMessage(msg);
-            if (string.IsNullOrEmpty(reason)) reason = string.Format("Rejection from silo {0} - Unknown reason.", MyAddress);
+            if (string.IsNullOrEmpty(reason)) reason = string.Format("Rejection from silo {0}{1} - Unknown reason.", 
+                MyAddress, MyHostAddress != null ? $"(hosted in {MyHostAddress})" : string.Empty);
             Message error = this.messageFactory.CreateRejectionResponse(msg, rejectionType, reason);
             // rejection msgs are always originated in the local silo, they are never remote.
             InboundQueue.PostMessage(error);

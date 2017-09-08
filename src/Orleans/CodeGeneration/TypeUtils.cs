@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -522,12 +523,12 @@ namespace Orleans.Runtime
             return type.Assembly.ReflectionOnly ? type : ResolveReflectionOnlyType(type.AssemblyQualifiedName);
         }
 
-        public static IEnumerable<Type> GetTypes(Assembly assembly, Predicate<Type> whereFunc, Logger logger)
+        public static IEnumerable<Type> GetTypes(Assembly assembly, Predicate<Type> whereFunc, Logger logger, bool logException)
         {
-            return assembly.IsDynamic ? Enumerable.Empty<Type>() : GetDefinedTypes(assembly, logger).Select(t => t.AsType()).Where(type => !type.GetTypeInfo().IsNestedPrivate && whereFunc(type));
+            return assembly.IsDynamic ? Enumerable.Empty<Type>() : GetDefinedTypes(assembly, logger, logException).Select(t => t.AsType()).Where(type => !type.GetTypeInfo().IsNestedPrivate && whereFunc(type));
         }
 
-        public static IEnumerable<TypeInfo> GetDefinedTypes(Assembly assembly, Logger logger)
+        public static IEnumerable<TypeInfo> GetDefinedTypes(Assembly assembly, Logger logger, bool logException)
         {
             try
             {
@@ -535,11 +536,12 @@ namespace Orleans.Runtime
             }
             catch (Exception exception)
             {
-                if (logger != null && logger.IsWarning)
+                if (logException && logger != null && logger.IsWarning)
                 {
                     var message =
                         $"Exception loading types from assembly '{assembly.FullName}': {LogFormatter.PrintException(exception)}.";
                     logger.Warn(ErrorCode.Loader_TypeLoadError_5, message, exception);
+                    logger.Info(ErrorCode.Loader_TypeLoadError_5, "Stack:\n{0}", new StackTrace(true).ToString());
                 }
                 
                 var typeLoadException = exception as ReflectionTypeLoadException;
@@ -553,14 +555,14 @@ namespace Orleans.Runtime
             }
         }
 
-        public static IEnumerable<Type> GetTypes(Predicate<Type> whereFunc, Logger logger)
+        public static IEnumerable<Type> GetTypes(Predicate<Type> whereFunc, Logger logger, bool logExceptions)
         {
             var assemblies = AppDomain.CurrentDomain.GetAssemblies();
             var result = new List<Type>();
             foreach (var assembly in assemblies)
             {
                 // there's no point in evaluating nested private types-- one of them fails to coerce to a reflection-only type anyhow.
-                var types = GetTypes(assembly, whereFunc, logger);
+                var types = GetTypes(assembly, whereFunc, logger, logExceptions);
                 result.AddRange(types);
             }
             return result;
