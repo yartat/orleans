@@ -30,7 +30,7 @@ namespace Orleans.Transactions
         public long ReadOnlyTransactionId { get; private set; }
 
         public TransactionAgent(ILocalSiloDetails siloDetails, ITransactionManagerService tmService)
-            : base(Constants.TransactionAgentSystemTargetId, siloDetails.SiloAddress)
+            : base(Constants.TransactionAgentSystemTargetId, siloDetails.SiloAddress, siloDetails.HostSiloAddress)
         {
             logger = LogManager.GetLogger("TransactionAgent");
             this.tmService = tmService;

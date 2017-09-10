@@ -34,7 +34,7 @@ namespace Orleans.Runtime
             GlobalConfiguration config,
             IInternalGrainFactory grainFactory,
             OrleansTaskScheduler scheduler)
-            : base(Constants.DeploymentLoadPublisherSystemTargetId, siloDetails.SiloAddress)
+            : base(Constants.DeploymentLoadPublisherSystemTargetId, siloDetails.SiloAddress, siloDetails.HostSiloAddress)
         {
             this.siloDetails = siloDetails;
             this.siloMetrics = siloMetrics;
@@ -191,7 +191,7 @@ namespace Orleans.Runtime
         {
             if (!status.IsTerminating()) return;
 
-            if (Equals(updatedSilo, this.Silo))
+            if (Equals(updatedSilo, this.Silo) || Equals(updatedSilo, this.HostSilo))
                 this.publishTimer.Dispose();
 
             SiloRuntimeStatistics ignore;

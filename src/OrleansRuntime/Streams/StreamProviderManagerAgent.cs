@@ -20,7 +20,7 @@ namespace Orleans.Runtime
         private readonly AsyncSerialExecutor nonReentrancyGuarantor;
 
         public StreamProviderManagerAgent(Silo silo, List<IProvider> allSiloProviders, IStreamProviderRuntime streamProviderRuntime)
-            : base(Constants.StreamProviderManagerAgentSystemTargetId, silo.SiloAddress)
+            : base(Constants.StreamProviderManagerAgentSystemTargetId, silo.SiloAddress, silo.SiloHostAddress)
         {
             logger = LogManager.GetLogger("StreamProviderUpdateAgent", LoggerType.Runtime);
             this.streamProviderManager = (StreamProviderManager)silo.StreamProviderManager;

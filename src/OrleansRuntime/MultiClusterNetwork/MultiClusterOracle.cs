@@ -31,7 +31,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
         private MultiClusterConfiguration injectedConfig;
 
         public MultiClusterOracle(SiloInitializationParameters siloDetails, MultiClusterGossipChannelFactory channelFactory, ISiloStatusOracle siloStatusOracle, IInternalGrainFactory grainFactory)
-            : base(Constants.MultiClusterOracleId, siloDetails.SiloAddress)
+            : base(Constants.MultiClusterOracleId, siloDetails.SiloAddress, siloDetails.HostSiloAddress)
         {
             this.channelFactory = channelFactory;
             this.siloStatusOracle = siloStatusOracle;
@@ -134,7 +134,8 @@ namespace Orleans.Runtime.MultiClusterNetwork
 
         public async Task Start()
         {
-            logger.Info(ErrorCode.MultiClusterNetwork_Starting, "MultiClusterOracle starting on {0}, Severity={1} ", Silo, logger.SeverityLevel);
+            logger.Info(ErrorCode.MultiClusterNetwork_Starting, "MultiClusterOracle starting on {0}{1}, Severity={2} ", 
+                Silo, HostSilo != null ? $"(hosted in {HostSilo})" : string.Empty, logger.SeverityLevel);
             try
             {
                 if (string.IsNullOrEmpty(clusterId))
@@ -164,7 +165,8 @@ namespace Orleans.Runtime.MultiClusterNetwork
 
                 StartTimer(); // for periodic full bulk gossip
 
-                logger.Info(ErrorCode.MultiClusterNetwork_Starting, "MultiClusterOracle started on {0} ", Silo);
+                logger.Info(ErrorCode.MultiClusterNetwork_Starting, "MultiClusterOracle started on {0}{1}", 
+                    Silo, HostSilo != null ? $"(hosted in {HostSilo})" : string.Empty);
             }
             catch (Exception exc)
             {
@@ -203,7 +205,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
 
             var activeLocalGateways = this.siloStatusOracle.GetApproximateMultiClusterGateways();
 
-            var iAmGateway = activeLocalGateways.Contains(Silo);
+            var iAmGateway = activeLocalGateways.Contains(HostSilo) || activeLocalGateways.Contains(Silo);
 
             // collect deltas that need to be published to all other gateways. 
             // Most of the time, this will contain just zero or one change.
@@ -254,7 +256,8 @@ namespace Orleans.Runtime.MultiClusterNetwork
                 }
             }
 
-            if (deltas.Gateways.ContainsKey(this.Silo) && deltas.Gateways[this.Silo].Status == GatewayStatus.Active)
+            if ((deltas.Gateways.ContainsKey(this.Silo) && deltas.Gateways[this.Silo].Status == GatewayStatus.Active) ||
+                (deltas.Gateways.ContainsKey(this.HostSilo) && deltas.Gateways[this.HostSilo].Status == GatewayStatus.Active))
             {
                 // Fully synchronize with channels if we just went active, which helps with initial startup time.
                 // Note: doing a partial publish just before this full synchronize is by design, so that it reduces stabilization
@@ -272,7 +275,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
         private IEnumerable<SiloAddress> GetApproximateOtherActiveSilos()
         {
             return this.siloStatusOracle.GetApproximateSiloStatuses()
-                .Where(kvp => !kvp.Key.Equals(this.Silo) && kvp.Value == SiloStatus.Active)
+                .Where(kvp => !(kvp.Key.Equals(this.Silo) || kvp.Key.Equals(this.HostSilo)) && kvp.Value == SiloStatus.Active)
                 .Select(kvp => kvp.Key);
         }
 
@@ -281,7 +284,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
             logger.Verbose("--- PeriodicBackgroundGossip");
             // pick random target for full gossip
             var gateways = localData.Current.Gateways.Values
-                           .Where(gw => !gw.SiloAddress.Equals(this.Silo) && gw.Status == GatewayStatus.Active)
+                           .Where(gw => !(gw.SiloAddress.Equals(this.Silo) || gw.SiloAddress.Equals(this.HostSilo)) && gw.Status == GatewayStatus.Active)
                            .ToList();
             var pick = random.Next(gateways.Count + gossipChannels.Count);
             if (pick < gateways.Count)
@@ -423,7 +426,16 @@ namespace Orleans.Runtime.MultiClusterNetwork
 
             // check if this silo is lagging
             if (!MultiClusterConfiguration.Equals(localData.Current.Configuration, expected))
-                result.Add(this.Silo);
+            {
+                if (this.HostSilo != null)
+                {
+                    result.Add(this.HostSilo);
+                }
+                else
+                {
+                    result.Add(this.Silo);
+                }
+            }
 
             if (forwardLocally)
             {
@@ -458,7 +470,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
             GatewayEntry myEntry;
 
             // don't do this if we are not an active gateway
-            if (!localData.Current.Gateways.TryGetValue(this.Silo, out myEntry)
+            if (!localData.Current.Gateways.TryGetValue(this.HostSilo ?? this.Silo, out myEntry)
                 || myEntry.Status != GatewayStatus.Active)
                 return;
 
@@ -631,8 +643,15 @@ namespace Orleans.Runtime.MultiClusterNetwork
                     await remoteOracle.Publish(data, TargetsRemoteCluster);
 
                     LastException = null;
-                    if (data.Gateways.ContainsKey(oracle.Silo))
-                        KnowsMe = data.Gateways[oracle.Silo].Status == GatewayStatus.Active;
+                    if (data.Gateways.ContainsKey(oracle.HostSilo))
+                    {
+                        KnowsMe = data.Gateways[oracle.HostSilo].Status == GatewayStatus.Active;
+                    }
+                    else
+                    {
+                        if (data.Gateways.ContainsKey(oracle.Silo))
+                            KnowsMe = data.Gateways[oracle.Silo].Status == GatewayStatus.Active;
+                    }
                     oracle.logger.Verbose("-{0} Publish to silo successful", id);
                 }
                 catch (Exception e)
@@ -663,8 +682,15 @@ namespace Orleans.Runtime.MultiClusterNetwork
                     var delta = oracle.localData.ApplyDataAndNotify(answer);
 
                     LastException = null;
-                    if (data.Gateways.ContainsKey(oracle.Silo))
+                    if (data.Gateways.ContainsKey(oracle.HostSilo))
+                    {
                         KnowsMe = data.Gateways[oracle.Silo].Status == GatewayStatus.Active;
+                    }
+                    else
+                    {
+                        if (data.Gateways.ContainsKey(oracle.Silo))
+                            KnowsMe = data.Gateways[oracle.Silo].Status == GatewayStatus.Active;
+                    }
                     oracle.logger.Verbose("-{0} Synchronize with silo successful, answer={1}", id, answer);
 
                     oracle.PublishMyStatusToNewDestinations(delta);
@@ -760,7 +786,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
             var myStatus = new GatewayEntry()
             {
                 ClusterId = clusterId,
-                SiloAddress = Silo,
+                SiloAddress = HostSilo ?? Silo,
                 Status = isGateway ? GatewayStatus.Active : GatewayStatus.Inactive,
                 HeartbeatTimestamp = DateTime.UtcNow,
             };
@@ -768,7 +794,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
             GatewayEntry existingEntry;
 
             // do not update if we are reporting inactive status and entry is not already there
-            if (!this.localData.Current.Gateways.TryGetValue(Silo, out existingEntry) && !isGateway)
+            if (!this.localData.Current.Gateways.TryGetValue(HostSilo ?? Silo, out existingEntry) && !isGateway)
                 return;
 
             // send if status is changed, or we are active and haven't said so in a while

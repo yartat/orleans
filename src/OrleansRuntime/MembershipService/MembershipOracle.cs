@@ -41,7 +41,7 @@ namespace Orleans.Runtime.MembershipService
         private TimeSpan AllowedIAmAliveMissPeriod { get { return orleansConfig.Globals.IAmAliveTablePublishTimeout.Multiply(orleansConfig.Globals.NumMissedTableIAmAliveLimit); } }
 
         public MembershipOracle(ILocalSiloDetails siloDetails, ClusterConfiguration clusterConfiguration, NodeConfiguration nodeConfiguration, MembershipTableFactory membershipTableFactory, IInternalGrainFactory grainFactory)
-            : base(Constants.MembershipOracleId, siloDetails.SiloAddress)
+            : base(Constants.MembershipOracleId, siloDetails.SiloAddress, siloDetails.HostSiloAddress)
         {
             this.membershipTableFactory = membershipTableFactory;
             this.grainFactory = grainFactory;

@@ -29,7 +29,7 @@ namespace Orleans.Runtime
             ILocalGrainDirectory dir,
             OrleansTaskScheduler scheduler,
             ClusterConfiguration config)
-            : base(Constants.ClientObserverRegistrarId, siloDetails.SiloAddress)
+            : base(Constants.ClientObserverRegistrarId, siloDetails.SiloAddress, siloDetails.HostSiloAddress)
         {
             grainDirectory = dir;
             myAddress = siloDetails.SiloAddress;
@@ -140,7 +140,7 @@ namespace Orleans.Runtime
             if (status != SiloStatus.Dead)
                 return;
 
-            if (Equals(updatedSilo, this.Silo))
+            if (Equals(updatedSilo, this.Silo) || Equals(updatedSilo, this.HostSilo))
                 refreshTimer?.Dispose();
 
             scheduler.QueueTask(() => OnClientRefreshTimer(null), SchedulingContext).Ignore();

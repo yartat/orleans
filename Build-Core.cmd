@@ -72,11 +72,11 @@ call %_dotnet% restore "%CMDHOME%\Build\Tools.csproj" --packages %TOOLS_PACKAGES
 
 SET CURRENT_CONFIGURATION=Debug
 
-call %_dotnet% restore %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_CONFIGURATION%-Restore.binlog /p:Configuration=%CURRENT_CONFIGURATION% "%SOLUTION%"
+call %_dotnet% restore %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_CONFIGURATION%-Restore.binlog /p:Configuration=%CURRENT_CONFIGURATION% "%SOLUTION%" /m
 @if ERRORLEVEL 1 GOTO :ErrorStop
 @echo RESTORE ok for %CURRENT_CONFIGURATION% %SOLUTION%
 
-call %_dotnet% build %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_CONFIGURATION%-Build.binlog /p:Configuration=%CURRENT_CONFIGURATION% "%SOLUTION%"
+call %_dotnet% build %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_CONFIGURATION%-Build.binlog /p:Configuration=%CURRENT_CONFIGURATION% "%SOLUTION%" /m
 @if ERRORLEVEL 1 GOTO :ErrorStop
 @echo BUILD ok for %CURRENT_CONFIGURATION% %SOLUTION%
 
@@ -88,11 +88,11 @@ call %_dotnet% pack --no-build %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_C
 
 SET CURRENT_CONFIGURATION=Release
 
-call %_dotnet% restore %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_CONFIGURATION%-Restore.binlog /p:Configuration=%CURRENT_CONFIGURATION% "%SOLUTION%"
+call %_dotnet% restore %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_CONFIGURATION%-Restore.binlog /p:Configuration=%CURRENT_CONFIGURATION% "%SOLUTION%" /m
 @if ERRORLEVEL 1 GOTO :ErrorStop
 @echo RESTORE ok for %CURRENT_CONFIGURATION% %SOLUTION%
 
-call %_dotnet% build %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_CONFIGURATION%-Build.binlog /p:Configuration=%CURRENT_CONFIGURATION% "%SOLUTION%"
+call %_dotnet% build %BUILD_FLAGS% /bl:%LOGFILENAME_PREFIX%-%CURRENT_CONFIGURATION%-Build.binlog /p:Configuration=%CURRENT_CONFIGURATION% "%SOLUTION%" /m
 @if ERRORLEVEL 1 GOTO :ErrorStop                                    
 @echo BUILD ok for %CURRENT_CONFIGURATION% %SOLUTION%
 

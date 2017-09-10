@@ -100,7 +100,7 @@ namespace Orleans.Runtime.GrainDirectory
                     }
                     Task task = localDirectory.Scheduler.RunOrQueueTask(
                                 () => localDirectory.GetDirectoryReference(captureSilo).AcceptHandoffPartition(
-                                        localDirectory.MyAddress,
+                                        localDirectory.MyHostAddress ?? localDirectory.MyAddress,
                                         captureChunk,
                                         captureIsFullCopy),
                                 localDirectory.RemoteGrainDirectory.SchedulingContext);
@@ -135,7 +135,7 @@ namespace Orleans.Runtime.GrainDirectory
 
                 // at least one predcessor should exist, which is me
                 SiloAddress predecessor = localDirectory.FindPredecessors(removedSilo, 1)[0];
-                if (localDirectory.MyAddress.Equals(predecessor))
+                if (localDirectory.MyAddress.Equals(predecessor) || (localDirectory.MyHostAddress != null && localDirectory.MyHostAddress.Equals(predecessor)))
                 {
                     if (logger.IsVerbose) logger.Verbose("Merging my partition with the copy of silo " + removedSilo);
                     // now I am responsible for this directory part
@@ -171,7 +171,7 @@ namespace Orleans.Runtime.GrainDirectory
             // that it doesn't also fail and that no other silo joins during the transition period).
             if (silosHoldingMyPartition.Count == 0)
             {
-                silosHoldingMyPartition.AddRange(localDirectory.FindPredecessors(localDirectory.MyAddress, 1));
+                silosHoldingMyPartition.AddRange(localDirectory.FindPredecessors(localDirectory.MyHostAddress ?? localDirectory.MyAddress, 1));
             }
             // take a copy of the current directory partition
             Dictionary<GrainId, IGrainInfo> batchUpdate = localDirectory.DirectoryPartition.GetItems();
@@ -198,7 +198,7 @@ namespace Orleans.Runtime.GrainDirectory
                 // check if this is one of our successors (i.e., if I should hold this silo's copy)
                 // (if yes, adjust local and/or copied directory partitions by splitting them between old successors and the new one)
                 // NOTE: We need to move part of our local directory to the new silo if it is an immediate successor.
-                List<SiloAddress> successors = localDirectory.FindSuccessors(localDirectory.MyAddress, 1);
+                List<SiloAddress> successors = localDirectory.FindSuccessors(localDirectory.MyHostAddress ?? localDirectory.MyAddress, 1);
                 if (!successors.Contains(addedSilo)) return;
 
                 // check if this is an immediate successor
@@ -210,7 +210,7 @@ namespace Orleans.Runtime.GrainDirectory
                         grain =>
                         {
                             var s = localDirectory.CalculateTargetSilo(grain);
-                            return (s != null) && !localDirectory.MyAddress.Equals(s);
+                            return (s != null) && !(s.Equals(localDirectory.MyAddress) || s.Equals(localDirectory.MyHostAddress));
                         }, false);
                     List<ActivationAddress> splitPartListSingle = splitPart.ToListOfActivations(true);
                     List<ActivationAddress> splitPartListMulti = splitPart.ToListOfActivations(false);
@@ -321,7 +321,7 @@ namespace Orleans.Runtime.GrainDirectory
             // release this old copy, as we have got a new one
             silosHoldingMyPartition.Remove(silo);
             localDirectory.Scheduler.QueueTask(() =>
-                localDirectory.GetDirectoryReference(silo).RemoveHandoffPartition(localDirectory.MyAddress),
+                localDirectory.GetDirectoryReference(silo).RemoveHandoffPartition(localDirectory.MyHostAddress ?? localDirectory.MyAddress),
                 localDirectory.RemoteGrainDirectory.SchedulingContext).Ignore();
         }
     }

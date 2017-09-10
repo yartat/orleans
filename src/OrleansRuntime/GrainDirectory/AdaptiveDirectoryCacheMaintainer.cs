@@ -72,7 +72,7 @@ namespace Orleans.Runtime.GrainDirectory
                         continue;
                     }
 
-                    if (owner.Equals(router.MyAddress))
+                    if (owner.Equals(router.MyAddress) || owner.Equals(router.MyHostAddress))
                     {
                         // we found our owned entry in the cache -- it is not supposed to happen unless there were 
                         // changes in the membership
@@ -114,7 +114,8 @@ namespace Orleans.Runtime.GrainDirectory
                     }
                 }
 
-                if (Log.IsVerbose2) Log.Verbose2("Silo {0} self-owned (and removed) {1}, kept {2}, removed {3} and tries to refresh {4} grains", router.MyAddress, cnt1, cnt2, cnt3, cnt4);
+                if (Log.IsVerbose2) Log.Verbose2("Silo {0}{1} self-owned (and removed) {2}, kept {3}, removed {4} and tries to refresh {5} grains", 
+                    router.MyAddress, router.MyHostAddress != null ? $"(hosted in {router.MyHostAddress})" : string.Empty, cnt1, cnt2, cnt3, cnt4);
 
                 // send batch requests
                 SendBatchCacheRefreshRequests(fetchInBatchList);
@@ -144,7 +145,8 @@ namespace Orleans.Runtime.GrainDirectory
                     ProcessCacheRefreshResponse(capture, response);
                 }, router.CacheValidator.SchedulingContext).Ignore();
 
-                if (Log.IsVerbose2) Log.Verbose2("Silo {0} is sending request to silo {1} with {2} entries", router.MyAddress, silo, cachedGrainAndETagList.Count);                
+                if (Log.IsVerbose2) Log.Verbose2("Silo {0}{1} is sending request to silo {2} with {3} entries", 
+                    router.MyAddress, router.MyHostAddress != null ? $"(hosted in {router.MyHostAddress})" : string.Empty, silo, cachedGrainAndETagList.Count);                
             }
         }
 
@@ -152,7 +154,8 @@ namespace Orleans.Runtime.GrainDirectory
             SiloAddress silo,
             IReadOnlyCollection<Tuple<GrainId, int, List<ActivationAddress>>> refreshResponse)
         {
-            if (Log.IsVerbose2) Log.Verbose2("Silo {0} received ProcessCacheRefreshResponse. #Response entries {1}.", router.MyAddress, refreshResponse.Count);
+            if (Log.IsVerbose2) Log.Verbose2("Silo {0}{1} received ProcessCacheRefreshResponse. #Response entries {2}.", 
+                router.MyAddress, router.MyHostAddress != null ? $"(hosted in {router.MyHostAddress})" : string.Empty, refreshResponse.Count);
 
             int cnt1 = 0, cnt2 = 0, cnt3 = 0;
 
@@ -185,7 +188,8 @@ namespace Orleans.Runtime.GrainDirectory
                     cnt3++;
                 }
             }
-            if (Log.IsVerbose2) Log.Verbose2("Silo {0} processed refresh response from {1} with {2} updated, {3} removed, {4} unchanged grains", router.MyAddress, silo, cnt1, cnt2, cnt3);
+            if (Log.IsVerbose2) Log.Verbose2("Silo {0}{1} processed refresh response from {2} with {3} updated, {4} removed, {5} unchanged grains", 
+                router.MyAddress, router.MyHostAddress != null ? $"(hosted in {router.MyHostAddress})" : string.Empty, silo, cnt1, cnt2, cnt3);
         }
 
 

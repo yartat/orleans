@@ -20,6 +20,7 @@ namespace Orleans
     internal interface ISystemTargetBase
     {
         SiloAddress Silo { get; }
+        SiloAddress HostSilo { get; }
         GrainId GrainId { get; }
         IRuntimeClient RuntimeClient { get; }
     }

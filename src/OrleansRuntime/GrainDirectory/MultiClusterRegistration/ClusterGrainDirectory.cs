@@ -28,7 +28,7 @@ namespace Orleans.Runtime.GrainDirectory
             GrainId grainId,
             string clusterId,
             IInternalGrainFactory grainFactory,
-            IMultiClusterOracle multiClusterOracle) : base(grainId, r.MyAddress)
+            IMultiClusterOracle multiClusterOracle) : base(grainId, r.MyAddress, r.MyHostAddress)
         {
             this.router = r;
             this.clusterId = clusterId;

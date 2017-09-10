@@ -35,7 +35,7 @@ namespace Orleans.Runtime
             CachedVersionSelectorManager cachedVersionSelectorManager, 
             CompatibilityDirectorManager compatibilityDirectorManager,
             VersionSelectorManager selectorManager)
-            : base(Constants.SiloControlId, silo.SiloAddress)
+            : base(Constants.SiloControlId, silo.SiloAddress, silo.SiloHostAddress)
         {
             this.silo = silo;
             this.deploymentLoadPublisher = deploymentLoadPublisher;

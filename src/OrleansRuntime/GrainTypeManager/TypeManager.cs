@@ -27,6 +27,7 @@ namespace Orleans.Runtime
 
         internal TypeManager(
             SiloAddress myAddr,
+            SiloAddress hostAddr,
             GrainTypeManager grainTypeManager,
             ISiloStatusOracle oracle,
             OrleansTaskScheduler scheduler,
@@ -34,7 +35,7 @@ namespace Orleans.Runtime
             ImplicitStreamSubscriberTable implicitStreamSubscriberTable,
             IInternalGrainFactory grainFactory,
             CachedVersionSelectorManager versionSelectorManager)
-            : base(Constants.TypeManagerId, myAddr)
+            : base(Constants.TypeManagerId, myAddr, hostAddr)
         {
             if (grainTypeManager == null)
                 throw new ArgumentNullException(nameof(grainTypeManager));
@@ -53,10 +54,16 @@ namespace Orleans.Runtime
             this.scheduler = scheduler;
             this.refreshClusterMapInterval = refreshClusterMapInterval;
             // We need this so we can place needed local activations
-            this.grainTypeManager.SetInterfaceMapsBySilo(new Dictionary<SiloAddress, GrainInterfaceMap>
+            var map = new Dictionary<SiloAddress, GrainInterfaceMap>
+                {
+                    {this.Silo, grainTypeManager.GetTypeCodeMap()},
+                };
+            if (this.HostSilo != null)
             {
-                {this.Silo, grainTypeManager.GetTypeCodeMap()}
-            });
+                map.Add(this.HostSilo, grainTypeManager.GetTypeCodeMap());
+            }
+
+            this.grainTypeManager.SetInterfaceMapsBySilo(map);
         }
 
         internal async Task Initialize(IVersionStore store)
@@ -110,14 +117,15 @@ namespace Orleans.Runtime
             // Build the new map. Always start by himself
             var newSilosClusterGrainInterfaceMap = new Dictionary<SiloAddress, GrainInterfaceMap>
             {
-                {this.Silo, grainTypeManager.GetTypeCodeMap()}
+                {this.Silo, grainTypeManager.GetTypeCodeMap()},
+                {this.HostSilo, grainTypeManager.GetTypeCodeMap()},
             };
             var getGrainInterfaceMapTasks = new List<Task<KeyValuePair<SiloAddress, GrainInterfaceMap>>>();
 
 
             foreach (var siloAddress in activeSilos.Keys)
             {
-                if (siloAddress.Equals(this.Silo)) continue;
+                if (siloAddress.Equals(this.Silo) || siloAddress.Equals(this.HostSilo)) continue;
 
                 GrainInterfaceMap value;
                 if (knownSilosClusterGrainInterfaceMap.TryGetValue(siloAddress, out value))

@@ -42,7 +42,7 @@ namespace Orleans.Streams
             IStreamQueueBalancer streamQueueBalancer,
             PersistentStreamProviderConfig config,
             IProviderConfiguration providerConfig)
-            : base(id, runtime.ExecutingSiloAddress)
+            : base(id, runtime.ExecutingSiloAddress, null)
         {
             if (string.IsNullOrWhiteSpace(strProviderName))
             {

@@ -122,6 +122,7 @@ namespace Orleans.Runtime
 
         /// <summary> SiloAddress for this silo. </summary>
         public SiloAddress SiloAddress => this.initializationParams.SiloAddress;
+        public SiloAddress SiloHostAddress => this.initializationParams.HostSiloAddress;
 
         /// <summary>
         ///  Silo termination event used to signal shutdown of this silo.
@@ -307,7 +308,7 @@ namespace Orleans.Runtime
                 new StreamProviderManagerAgent(this, allSiloProviders, Services.GetRequiredService<IStreamProviderRuntime>()));
 
             logger.Verbose("Creating {0} System Target", "ProtocolGateway");
-            RegisterSystemTarget(new ProtocolGateway(this.SiloAddress));
+            RegisterSystemTarget(new ProtocolGateway(this.SiloAddress, this.SiloHostAddress));
 
             logger.Verbose("Creating {0} System Target", "DeploymentLoadPublisher");
             RegisterSystemTarget(Services.GetRequiredService<DeploymentLoadPublisher>());
@@ -324,7 +325,7 @@ namespace Orleans.Runtime
             this.RegisterSystemTarget(this.Services.GetRequiredService<ClientObserverRegistrar>());
             var implicitStreamSubscriberTable = Services.GetRequiredService<ImplicitStreamSubscriberTable>();
             var versionDirectorManager = this.Services.GetRequiredService<CachedVersionSelectorManager>();
-            typeManager = new TypeManager(SiloAddress, this.grainTypeManager, membershipOracle, LocalScheduler, GlobalConfig.TypeMapRefreshInterval, implicitStreamSubscriberTable, this.grainFactory, versionDirectorManager);
+            typeManager = new TypeManager(SiloAddress, SiloHostAddress, this.grainTypeManager, membershipOracle, LocalScheduler, GlobalConfig.TypeMapRefreshInterval, implicitStreamSubscriberTable, this.grainFactory, versionDirectorManager);
             this.RegisterSystemTarget(typeManager);
 
             logger.Verbose("Creating {0} System Target", "MembershipOracle");
@@ -973,7 +974,7 @@ namespace Orleans.Runtime
     internal class ProviderManagerSystemTarget : SystemTarget
     {
         public ProviderManagerSystemTarget(Silo currentSilo)
-            : base(Constants.ProviderManagerSystemTargetId, currentSilo.SiloAddress)
+            : base(Constants.ProviderManagerSystemTargetId, currentSilo.SiloAddress, currentSilo.SiloHostAddress)
         {
         }
     }

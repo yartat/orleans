@@ -179,7 +179,17 @@ namespace Orleans.Runtime.MembershipService
 
         internal MembershipEntry GetSiloEntry(SiloAddress siloAddress)
         {
-            return localTable[siloAddress];
+            if (localTable.TryGetValue(siloAddress, out var result))
+            {
+                return result;
+            }
+
+            if (logger.IsInfo)
+            {
+                logger.Info("local table contains:\n{{\n{0}\n}}", string.Join("\n", localTable.Select(x => $"{{\"{x.Key.ToLongString()}\": \"{x.Value.ToFullString()}\"}}")));
+            }
+
+            throw new SiloUnavailableException($"Silo {siloAddress.ToLongString()} is not available in the local table");
         }
 
         internal Dictionary<SiloAddress, SiloStatus> GetSiloStatuses(Func<SiloStatus, bool> filter, bool includeMyself)
@@ -189,11 +199,7 @@ namespace Orleans.Runtime.MembershipService
 
             if (includeMyself && filter(CurrentStatus)) // add myself
             {
-                dict.Add(MyAddress, CurrentStatus);
-                if (MyHostAddress != null)
-                {
-                    dict.Add(MyHostAddress, CurrentStatus);
-                }
+                dict.Add(MyHostAddress ?? MyAddress, CurrentStatus);
             }
 
             return dict;

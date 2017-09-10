@@ -40,13 +40,13 @@ namespace Orleans.Runtime
         protected IGrainServiceConfiguration Config { get; private set; }
 
         /// <summary>Only to make Reflection happy</summary>
-        protected GrainService() : base(null, null)
+        protected GrainService() : base(null, null, null)
         {
             throw new Exception("This should not be constructed by client code.");
         }
 
         /// <summary>Constructor to use for grain services</summary>
-        protected GrainService(IGrainIdentity grainId, Silo silo, IGrainServiceConfiguration config) : base((GrainId)grainId, silo.SiloAddress, lowPriority: true)
+        protected GrainService(IGrainIdentity grainId, Silo silo, IGrainServiceConfiguration config) : base((GrainId)grainId, silo.SiloAddress, lowPriority: true, hostSilo: silo.SiloHostAddress)
         {
             typeName = this.GetType().FullName;
             Logger = LogManager.GetLogger(typeName);

@@ -20,6 +20,7 @@ namespace Orleans.Runtime
 
         /// <summary>Silo address of the system target.</summary>
         public SiloAddress Silo { get; }
+        public SiloAddress HostSilo { get; }
         GrainId ISystemTargetBase.GrainId => grainId;
         internal SchedulingContext SchedulingContext => schedulingContext;
         internal ActivationId ActivationId { get; set; }
@@ -44,15 +45,16 @@ namespace Orleans.Runtime
         {
         }
 
-        internal SystemTarget(GrainId grainId, SiloAddress silo) 
-            : this(grainId, silo, false)
+        internal SystemTarget(GrainId grainId, SiloAddress silo, SiloAddress hostSilo) 
+            : this(grainId, silo, hostSilo, false)
         {
         }
 
-        internal SystemTarget(GrainId grainId, SiloAddress silo, bool lowPriority)
+        internal SystemTarget(GrainId grainId, SiloAddress silo, SiloAddress hostSilo,  bool lowPriority)
         {
             this.grainId = grainId;
             Silo = silo;
+            HostSilo = hostSilo;
             ActivationId = ActivationId.GetSystemActivation(grainId, silo);
             schedulingContext = new SchedulingContext(this, lowPriority);
         }

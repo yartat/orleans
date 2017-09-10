@@ -43,7 +43,7 @@ namespace Orleans.Streams
             IStreamPubSub streamPubSub,
             QueueId queueId,
             PersistentStreamProviderConfig config)
-            : base(id, runtime.ExecutingSiloAddress, true)
+            : base(id, runtime.ExecutingSiloAddress, null, true)
         {
             if (runtime == null) throw new ArgumentNullException("runtime", "PersistentStreamPullingAgent: runtime reference should not be null");
             if (strProviderName == null) throw new ArgumentNullException("runtime", "PersistentStreamPullingAgent: strProviderName should not be null");

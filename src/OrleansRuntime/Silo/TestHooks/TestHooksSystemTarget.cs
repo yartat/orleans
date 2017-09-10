@@ -20,7 +20,7 @@ namespace Orleans.Runtime.TestHooks
         private readonly Silo silo;
         private readonly IConsistentRingProvider consistentRingProvider;
 
-        internal TestHooksSystemTarget(Silo silo) : base(Constants.TestHooksSystemTargetId, silo.SiloAddress)
+        internal TestHooksSystemTarget(Silo silo) : base(Constants.TestHooksSystemTargetId, silo.SiloAddress, silo.SiloHostAddress)
         {
             this.silo = silo;
             consistentRingProvider = silo.RingProvider;
