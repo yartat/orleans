@@ -257,7 +257,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
             }
 
             if ((deltas.Gateways.ContainsKey(this.Silo) && deltas.Gateways[this.Silo].Status == GatewayStatus.Active) ||
-                (deltas.Gateways.ContainsKey(this.HostSilo) && deltas.Gateways[this.HostSilo].Status == GatewayStatus.Active))
+                (this.HostSilo != null && deltas.Gateways.ContainsKey(this.HostSilo) && deltas.Gateways[this.HostSilo].Status == GatewayStatus.Active))
             {
                 // Fully synchronize with channels if we just went active, which helps with initial startup time.
                 // Note: doing a partial publish just before this full synchronize is by design, so that it reduces stabilization
@@ -427,14 +427,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
             // check if this silo is lagging
             if (!MultiClusterConfiguration.Equals(localData.Current.Configuration, expected))
             {
-                if (this.HostSilo != null)
-                {
-                    result.Add(this.HostSilo);
-                }
-                else
-                {
-                    result.Add(this.Silo);
-                }
+                result.Add(this.HostSilo ?? this.Silo);
             }
 
             if (forwardLocally)
@@ -643,7 +636,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
                     await remoteOracle.Publish(data, TargetsRemoteCluster);
 
                     LastException = null;
-                    if (data.Gateways.ContainsKey(oracle.HostSilo))
+                    if (oracle.HostSilo != null && data.Gateways.ContainsKey(oracle.HostSilo))
                     {
                         KnowsMe = data.Gateways[oracle.HostSilo].Status == GatewayStatus.Active;
                     }
@@ -682,7 +675,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
                     var delta = oracle.localData.ApplyDataAndNotify(answer);
 
                     LastException = null;
-                    if (data.Gateways.ContainsKey(oracle.HostSilo))
+                    if (oracle.HostSilo != null && data.Gateways.ContainsKey(oracle.HostSilo))
                     {
                         KnowsMe = data.Gateways[oracle.Silo].Status == GatewayStatus.Active;
                     }

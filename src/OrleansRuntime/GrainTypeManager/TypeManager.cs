@@ -118,8 +118,13 @@ namespace Orleans.Runtime
             var newSilosClusterGrainInterfaceMap = new Dictionary<SiloAddress, GrainInterfaceMap>
             {
                 {this.Silo, grainTypeManager.GetTypeCodeMap()},
-                {this.HostSilo, grainTypeManager.GetTypeCodeMap()},
             };
+
+            if (this.HostSilo != null)
+            {
+                newSilosClusterGrainInterfaceMap.Add(this.HostSilo, grainTypeManager.GetTypeCodeMap());
+            }
+
             var getGrainInterfaceMapTasks = new List<Task<KeyValuePair<SiloAddress, GrainInterfaceMap>>>();
 
 
