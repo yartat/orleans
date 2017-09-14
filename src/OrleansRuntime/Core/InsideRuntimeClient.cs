@@ -61,6 +61,7 @@ namespace Orleans.Runtime
             this.ServiceProvider = serviceProvider;
             this.SerializationManager = serializationManager;
             MySilo = siloDetails.SiloAddress;
+            MyHostSilo = siloDetails.HostSiloAddress;
             disposables = new List<IDisposable>();
             callbacks = new ConcurrentDictionary<CorrelationId, CallbackData>();
             Config = config;
@@ -89,6 +90,7 @@ namespace Orleans.Runtime
         public IInternalGrainFactory InternalGrainFactory => this.ConcreteGrainFactory;
 
         private SiloAddress MySilo { get; }
+        private SiloAddress MyHostSilo { get; }
 
         private ClusterConfiguration Config { get; }
 
@@ -131,7 +133,7 @@ namespace Orleans.Runtime
         {
             // fill in sender
             if (message.SendingSilo == null)
-                message.SendingSilo = MySilo;
+                message.SendingSilo = MyHostSilo ?? MySilo;
             if (!String.IsNullOrEmpty(genericArguments))
                 message.GenericGrainType = genericArguments;
 
@@ -171,7 +173,7 @@ namespace Orleans.Runtime
             message.TargetGrain = targetGrainId;
             if (targetGrainId.IsSystemTarget)
             {
-                SiloAddress targetSilo = (target.SystemTargetSilo ?? MySilo);
+                SiloAddress targetSilo = (target.SystemTargetSilo ?? MyHostSilo ?? MySilo);
                 message.TargetSilo = targetSilo;
                 message.TargetActivation = ActivationId.GetSystemActivation(targetGrainId, targetSilo);
                 message.Category = targetGrainId.Equals(Constants.MembershipOracleId) ?
@@ -550,7 +552,7 @@ namespace Orleans.Runtime
         {
             if (message.Result == Message.ResponseTypes.Rejection)
             {
-                if (!message.TargetSilo.Matches(this.CurrentSilo))
+                if (!(message.TargetSilo.Matches(this.CurrentSilo) || message.TargetSilo.Matches(this.CurrentHostSilo)))
                 {
                     // gatewayed message - gateway back to sender
                     if (logger.IsVerbose2) logger.Verbose2(ErrorCode.Dispatcher_NoCallbackForRejectionResp, "No callback for rejection response message: {0}", message);
@@ -639,7 +641,12 @@ namespace Orleans.Runtime
         {
             get { return MySilo; }
         }
-        
+
+        public SiloAddress CurrentHostSilo
+        {
+            get { return MyHostSilo; }
+        }
+
 
         public void Reset(bool cleanup)
         {

@@ -48,7 +48,7 @@ namespace Orleans.Runtime.Messaging
             clients = new ConcurrentDictionary<GrainId, ClientState>();
             clientSockets = new ConcurrentDictionary<Socket, ClientState>();
             clientsReplyRoutingCache = new ClientsReplyRoutingCache(messageCenter.MessagingConfiguration);
-            this.gatewayAddress = SiloAddress.New(nodeConfig.ProxyGatewayEndpoint, 0);
+            this.gatewayAddress = SiloAddress.New(nodeConfig.HostProxyGatewayEndpoint ?? nodeConfig.ProxyGatewayEndpoint, 0);
             lockable = new object();
         }
 
