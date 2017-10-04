@@ -4,6 +4,7 @@ using System.Reflection;
 using Orleans.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 
 namespace Orleans.Providers
 {
@@ -12,11 +13,11 @@ namespace Orleans.Providers
     {
         internal ConcurrentBag<ProviderTypeLoader> Managers { get; private set; }
         private readonly Logger logger;
-        public LoadedProviderTypeLoaders()
+        public LoadedProviderTypeLoaders(LoggerWrapper<LoadedProviderTypeLoaders> logger)
         {
             this.Managers = new ConcurrentBag<ProviderTypeLoader>();
             AppDomain.CurrentDomain.AssemblyLoad += ProcessNewAssembly;
-            this.logger = LogManager.GetLogger("ProviderTypeLoader", LoggerType.Runtime);
+            this.logger = logger;
         }
 
         private void ProcessNewAssembly(object sender, AssemblyLoadEventArgs args)
@@ -34,7 +35,7 @@ namespace Orleans.Providers
                 // We assume that it's better to fetch and iterate through the list of types once,
                 // and the list of TypeManagers many times, rather than the other way around.
                 // Certainly it can't be *less* efficient to do it this way.
-                foreach (var type in TypeUtils.GetDefinedTypes(args.LoadedAssembly, logger, false))
+                foreach (var type in TypeUtils.GetDefinedTypes(args.LoadedAssembly, logger))
                 {
                     foreach (var mgr in Managers)
                     {
@@ -55,20 +56,21 @@ namespace Orleans.Providers
         private readonly HashSet<Type> alreadyProcessed;
         public bool IsActive { get; set; }
 
-        private readonly Logger logger = LogManager.GetLogger("ProviderTypeLoader", LoggerType.Runtime);
+        private readonly Logger logger;
 
 
-        public ProviderTypeLoader(Func<Type, bool> condition, Action<Type> action)
+        public ProviderTypeLoader(Func<Type, bool> condition, Action<Type> action, ILoggerFactory loggerFactory)
         {
             this.condition = condition;
             callback = action;
             alreadyProcessed = new HashSet<Type>();
+            this.logger = new LoggerWrapper<ProviderTypeLoader>(loggerFactory);
             IsActive = true;
          }
 
-        public static void AddProviderTypeManager(Func<Type, bool> condition, Action<Type> action, LoadedProviderTypeLoaders loadedProviderTypeLoadersSingleton)
+        public static void AddProviderTypeManager(Func<Type, bool> condition, Action<Type> action, LoadedProviderTypeLoaders loadedProviderTypeLoadersSingleton, ILoggerFactory loggerFactory)
         {
-            var manager = new ProviderTypeLoader(condition, action);
+            var manager = new ProviderTypeLoader(condition, action, loggerFactory);
             lock (loadedProviderTypeLoadersSingleton.Managers)
             {
                 loadedProviderTypeLoadersSingleton.Managers.Add(manager);
@@ -107,7 +109,7 @@ namespace Orleans.Providers
 
             try
             {
-                foreach (var type in TypeUtils.GetDefinedTypes(assembly, logger, false))
+                foreach (var type in TypeUtils.GetDefinedTypes(assembly, logger))
                 {
                     ProcessType(type);
                 }

@@ -1,20 +1,19 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using Microsoft.Extensions.Logging;
 using Orleans.Runtime.Configuration;
 
 namespace Orleans.Runtime
 {
     internal abstract class AsynchQueueAgent<T> : AsynchAgent, IDisposable where T : IOutgoingMessage
     {
-        private readonly IMessagingConfiguration config;
         private BlockingCollection<T> requestQueue;
         private QueueTrackingStatistic queueTracking;
 
-        protected AsynchQueueAgent(string nameSuffix, IMessagingConfiguration cfg)
-            : base(nameSuffix)
+        protected AsynchQueueAgent(string nameSuffix, ILoggerFactory loggerFactory)
+            : base(nameSuffix, loggerFactory)
         {
-            config = cfg;
             requestQueue = new BlockingCollection<T>();
             if (StatisticsCollector.CollectQueueStats)
             {

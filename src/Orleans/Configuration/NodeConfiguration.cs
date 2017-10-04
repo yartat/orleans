@@ -148,15 +148,6 @@ namespace Orleans.Runtime.Configuration
         private string traceFilePattern;
         /// <summary>
         /// </summary>
-        public Severity DefaultTraceLevel { get; set; }
-        /// <summary>
-        /// </summary>
-        public IList<Tuple<string, Severity>> TraceLevelOverrides { get; private set; }
-        /// <summary>
-        /// </summary>
-        public bool TraceToConsole { get; set; }
-        /// <summary>
-        /// </summary>
         public string TraceFilePattern
         {
             get { return traceFilePattern; }
@@ -169,15 +160,11 @@ namespace Orleans.Runtime.Configuration
         /// <summary>
         /// </summary>
         public string TraceFileName { get; set; }
+
         /// <summary>
-        /// </summary>
-        public int LargeMessageWarningThreshold { get; set; }
-        /// <summary>
+        ///  Whether Trace.CorrelationManager.ActivityId settings should be propagated into grain calls.
         /// </summary>
         public bool PropagateActivityId { get; set; }
-        /// <summary>
-        /// </summary>
-        public int BulkMessageLimit { get; set; }
 
         /// <summary>
         /// Specifies the name of the Startup class in the configuration file.
@@ -222,6 +209,8 @@ namespace Orleans.Runtime.Configuration
         /// </summary>
         public bool UseNagleAlgorithm { get; set; }
 
+        public TelemetryConfiguration TelemetryConfiguration { get; } = new TelemetryConfiguration();
+
         public Dictionary<string, SearchOption> AdditionalAssemblyDirectories { get; set; }
 
         public List<string> ExcludedGrainTypes { get; set; }
@@ -262,13 +251,8 @@ namespace Orleans.Runtime.Configuration
             LoadSheddingEnabled = false;
             LoadSheddingLimit = 95;
 
-            DefaultTraceLevel = Severity.Info;
-            TraceLevelOverrides = new List<Tuple<string, Severity>>();
-            TraceToConsole = ConsoleText.IsConsoleAvailable;
             TraceFilePattern = "{0}-{1}.log";
-            LargeMessageWarningThreshold = Constants.LARGE_OBJECT_HEAP_THRESHOLD;
             PropagateActivityId = Constants.DEFAULT_PROPAGATE_E2E_ACTIVITY_ID;
-            BulkMessageLimit = Constants.DEFAULT_LOGGER_BULK_MESSAGE_LIMIT;
 
             StatisticsMetricsTableWriteInterval = DEFAULT_STATS_METRICS_TABLE_WRITE_PERIOD;
             StatisticsPerfCountersWriteInterval = DEFAULT_STATS_PERF_COUNTERS_WRITE_PERIOD;
@@ -312,14 +296,9 @@ namespace Orleans.Runtime.Configuration
             LoadSheddingEnabled = other.LoadSheddingEnabled;
             LoadSheddingLimit = other.LoadSheddingLimit;
 
-            DefaultTraceLevel = other.DefaultTraceLevel;
-            TraceLevelOverrides = new List<Tuple<string, Severity>>(other.TraceLevelOverrides);
-            TraceToConsole = other.TraceToConsole;
             TraceFilePattern = other.TraceFilePattern;
             TraceFileName = other.TraceFileName;
-            LargeMessageWarningThreshold = other.LargeMessageWarningThreshold;
             PropagateActivityId = other.PropagateActivityId;
-            BulkMessageLimit = other.BulkMessageLimit;
 
             StatisticsProviderName = other.StatisticsProviderName;
             StatisticsMetricsTableWriteInterval = other.StatisticsMetricsTableWriteInterval;
@@ -340,6 +319,7 @@ namespace Orleans.Runtime.Configuration
             StartupTypeName = other.StartupTypeName;
             AdditionalAssemblyDirectories = new Dictionary<string, SearchOption>(other.AdditionalAssemblyDirectories);
             ExcludedGrainTypes = other.ExcludedGrainTypes.ToList();
+            TelemetryConfiguration = other.TelemetryConfiguration.Clone();
         }
 
         public override string ToString()
@@ -516,7 +496,7 @@ namespace Orleans.Runtime.Configuration
                         }
                         break;
                     case "Telemetry":
-                        ConfigUtilities.ParseTelemetry(child);
+                        ConfigUtilities.ParseTelemetry(child, this.TelemetryConfiguration);
                         break;
                     case "AdditionalAssemblyDirectories":
                         ConfigUtilities.ParseAdditionalAssemblyDirectories(AdditionalAssemblyDirectories, child);

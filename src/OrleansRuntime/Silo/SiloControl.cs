@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Orleans.Providers;
 using Orleans.Runtime.Configuration;
 using Orleans.Runtime.Versions;
@@ -16,32 +16,48 @@ namespace Orleans.Runtime
 {
     internal class SiloControl : SystemTarget, ISiloControl
     {
-        private static readonly Logger logger = LogManager.GetLogger("SiloControl", LoggerType.Runtime);
-        private readonly Silo silo;
+        private readonly ILogger logger;
+        private readonly ILocalSiloDetails localSiloDetails;
+        private readonly Factory<NodeConfiguration> localConfiguration;
+        private readonly ClusterConfiguration clusterConfiguration;
+
         private readonly DeploymentLoadPublisher deploymentLoadPublisher;
         private readonly Catalog catalog;
         private readonly GrainTypeManager grainTypeManager;
         private readonly ISiloPerformanceMetrics siloMetrics;
+        private readonly ProviderManagerSystemTarget providerManagerSystemTarget;
+        private readonly ICollection<IProviderManager> providerManagers;
         private readonly CachedVersionSelectorManager cachedVersionSelectorManager;
         private readonly CompatibilityDirectorManager compatibilityDirectorManager;
         private readonly VersionSelectorManager selectorManager;
 
         public SiloControl(
-            Silo silo,
+            ILocalSiloDetails localSiloDetails,
+            Factory<NodeConfiguration> localConfiguration,
+            ClusterConfiguration clusterConfiguration,
             DeploymentLoadPublisher deploymentLoadPublisher,
             Catalog catalog,
             GrainTypeManager grainTypeManager,
-            ISiloPerformanceMetrics siloMetrics, 
+            ISiloPerformanceMetrics siloMetrics,
+            IEnumerable<IProviderManager> providerManagers,
+            ProviderManagerSystemTarget providerManagerSystemTarget,
             CachedVersionSelectorManager cachedVersionSelectorManager, 
             CompatibilityDirectorManager compatibilityDirectorManager,
-            VersionSelectorManager selectorManager)
-            : base(Constants.SiloControlId, silo.SiloAddress, silo.SiloHostAddress)
+            VersionSelectorManager selectorManager,
+            ILoggerFactory loggerFactory)
+            : base(Constants.SiloControlId, localSiloDetails.SiloAddress, localSiloDetails.HostSiloAddress, loggerFactory)
         {
-            this.silo = silo;
+            this.localSiloDetails = localSiloDetails;
+            this.localConfiguration = localConfiguration;
+            this.clusterConfiguration = clusterConfiguration;
+
+            this.logger = loggerFactory.CreateLogger<SiloControl>();
             this.deploymentLoadPublisher = deploymentLoadPublisher;
             this.catalog = catalog;
             this.grainTypeManager = grainTypeManager;
             this.siloMetrics = siloMetrics;
+            this.providerManagerSystemTarget = providerManagerSystemTarget;
+            this.providerManagers = providerManagers.ToList();
             this.cachedVersionSelectorManager = cachedVersionSelectorManager;
             this.compatibilityDirectorManager = compatibilityDirectorManager;
             this.selectorManager = selectorManager;
@@ -52,35 +68,6 @@ namespace Orleans.Runtime
         public Task Ping(string message)
         {
             logger.Info("Ping");
-            return Task.CompletedTask;
-        }
-
-        public Task SetSystemLogLevel(int traceLevel)
-        {
-            var newTraceLevel = (Severity)traceLevel;
-            logger.Info("SetSystemLogLevel={0}", newTraceLevel);
-            LogManager.SetRuntimeLogLevel(newTraceLevel);
-            silo.LocalConfig.DefaultTraceLevel = newTraceLevel;
-            return Task.CompletedTask;
-        }
-
-        public Task SetAppLogLevel(int traceLevel)
-        {
-            var newTraceLevel = (Severity)traceLevel;
-            logger.Info("SetAppLogLevel={0}", newTraceLevel);
-            LogManager.SetAppLogLevel(newTraceLevel);
-            return Task.CompletedTask;
-        }
-
-        public Task SetLogLevel(string logName, int traceLevel)
-        {
-            var newTraceLevel = (Severity)traceLevel;
-            logger.Info("SetLogLevel[{0}]={1}", logName, newTraceLevel);
-            LoggerImpl log = LogManager.FindLogger(logName);
-            
-            if (log == null) throw new ArgumentException(string.Format("Logger {0} not found", logName));
-            
-            log.SetSeverityLevel(newTraceLevel);
             return Task.CompletedTask;
         }
 
@@ -100,13 +87,13 @@ namespace Orleans.Runtime
 
         public Task ForceRuntimeStatisticsCollection()
         {
-            if (logger.IsVerbose) logger.Verbose("ForceRuntimeStatisticsCollection");
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("ForceRuntimeStatisticsCollection");
             return this.deploymentLoadPublisher.RefreshStatistics();
         }
 
         public Task<SiloRuntimeStatistics> GetRuntimeStatistics()
         {
-            if (logger.IsVerbose) logger.Verbose("GetRuntimeStatistics");
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("GetRuntimeStatistics");
             return Task.FromResult(new SiloRuntimeStatistics(this.siloMetrics, DateTime.UtcNow));
         }
 
@@ -118,7 +105,7 @@ namespace Orleans.Runtime
 
         public Task<List<DetailedGrainStatistic>> GetDetailedGrainStatistics(string[] types=null)
         {
-            if (logger.IsVerbose) logger.Verbose("GetDetailedGrainStatistics");
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("GetDetailedGrainStatistics");
             return Task.FromResult(this.catalog.GetDetailedGrainStatistics(types));
         }
 
@@ -126,7 +113,7 @@ namespace Orleans.Runtime
         {
             logger.Info("GetSimpleGrainStatistics");
             return Task.FromResult( this.catalog.GetSimpleGrainStatistics().Select(p =>
-                new SimpleGrainStatistic { SiloAddress = silo.SiloAddress, GrainType = p.Key, ActivationCount = (int)p.Value }).ToArray());
+                new SimpleGrainStatistic { SiloAddress = this.localSiloDetails.HostSiloAddress ?? this.localSiloDetails.SiloAddress, GrainType = p.Key, ActivationCount = (int)p.Value }).ToArray());
         }
 
         public Task<DetailedGrainReport> GetDetailedGrainReport(GrainId grainId)
@@ -138,14 +125,19 @@ namespace Orleans.Runtime
         public Task UpdateConfiguration(string configuration)
         {
             logger.Info("UpdateConfiguration with {0}", configuration);
-            silo.OrleansConfig.Update(configuration);
-            logger.Info(ErrorCode.Runtime_Error_100318, "UpdateConfiguration - new config is now {0}", silo.OrleansConfig.ToString(silo.Name));
+            this.clusterConfiguration.Update(configuration);
+            logger.Info(ErrorCode.Runtime_Error_100318, "UpdateConfiguration - new config is now {0}", this.clusterConfiguration.ToString(this.localSiloDetails.Name));
             return Task.CompletedTask;
         }
 
-        public Task UpdateStreamProviders(IDictionary<string, ProviderCategoryConfiguration> streamProviderConfigurations)
+        /// <inheritdoc />
+        public async Task UpdateStreamProviders(IDictionary<string, ProviderCategoryConfiguration> streamProviderConfigurations)
         {
-            return silo.UpdateStreamProviders(streamProviderConfigurations);
+            IStreamProviderManagerAgent streamProviderUpdateAgent =
+                RuntimeClient.InternalGrainFactory.GetSystemTarget<IStreamProviderManagerAgent>(Constants.StreamProviderManagerAgentSystemTargetId, this.localSiloDetails.SiloAddress);
+
+            await this.providerManagerSystemTarget.ScheduleTask(() => streamProviderUpdateAgent.UpdateStreamProviders(streamProviderConfigurations))
+                .WithTimeout(TimeSpan.FromSeconds(25));
         }
 
         public Task<int> GetActivationCount()
@@ -155,18 +147,25 @@ namespace Orleans.Runtime
 
         public Task<object> SendControlCommandToProvider(string providerTypeFullName, string providerName, int command, object arg)
         {
-            IReadOnlyCollection<IProvider> allProviders = silo.AllSiloProviders;
-            IProvider provider = allProviders.FirstOrDefault(pr => pr.GetType().FullName.Equals(providerTypeFullName) && pr.Name.Equals(providerName));
+            IProvider provider = null;
+            foreach (var providerManager in this.providerManagers)
+            {
+                try
+                {
+                    var candidate = providerManager.GetProvider(providerName);
+                    if (string.Equals(providerTypeFullName, candidate?.GetType()?.FullName))
+                    {
+                        provider = candidate;
+                        break;
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
             if (provider == null)
             {
-                string allProvidersList = Utils.EnumerableToString(
-                    allProviders.Select(p => string.Format(
-                        "[Name = {0} Type = {1} Location = {2}]",
-                        p.Name, p.GetType().FullName, p.GetType().GetTypeInfo().Assembly.Location)));
-                string error = string.Format(
-                    "Could not find provider for type {0} and name {1} \n"
-                    + " Providers currently loaded in silo are: {2}", 
-                    providerTypeFullName, providerName, allProvidersList);
+                string error = $"Could not find provider for type {providerTypeFullName} and name {providerName}.";
                 logger.Error(ErrorCode.Provider_ProviderNotFound, error);
                 throw new ArgumentException(error);
             }
@@ -174,9 +173,7 @@ namespace Orleans.Runtime
             IControllable controllable = provider as IControllable;
             if (controllable == null)
             {
-                string error = string.Format(
-                    "The found provider of type {0} and name {1} is not controllable.", 
-                    providerTypeFullName, providerName);
+                string error = $"The found provider of type {providerTypeFullName} and name {providerName} is not controllable.";
                 logger.Error(ErrorCode.Provider_ProviderNotControllable, error);
                 throw new ArgumentException(error);
             }

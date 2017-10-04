@@ -1,4 +1,4 @@
-using System.IO;
+using Microsoft.Extensions.Logging;
 
 namespace Orleans.Runtime
 {
@@ -54,9 +54,10 @@ namespace Orleans.Runtime
         /// <param name="codeGeneratorManager">
         /// The code generator.
         /// </param>
-        public AssemblyProcessor(TypeMetadataCache typeCache, SerializationManager serializationManager, CodeGeneratorManager codeGeneratorManager)
+        /// <param name="logger"> the logger to use</param>
+        public AssemblyProcessor(TypeMetadataCache typeCache, SerializationManager serializationManager, CodeGeneratorManager codeGeneratorManager, LoggerWrapper<AssemblyProcessor> logger)
         {
-            this.logger = LogManager.GetLogger("AssemblyProcessor");
+            this.logger = logger;
             this.typeCache = typeCache;
             this.serializationManager = serializationManager;
             this.codeGeneratorManager = codeGeneratorManager;
@@ -159,7 +160,7 @@ namespace Orleans.Runtime
             }
 
             // Process each type in the assembly.
-            var assemblyTypes = TypeUtils.GetDefinedTypes(assembly, this.logger, false).ToArray();
+            var assemblyTypes = TypeUtils.GetDefinedTypes(assembly, this.logger).ToArray();
 
             // Process each type in the assembly.
             foreach (TypeInfo typeInfo in assemblyTypes)
@@ -176,7 +177,6 @@ namespace Orleans.Runtime
                     this.serializationManager.FindSerializationInfo(type);
                     this.typeCache.FindSupportClasses(type);
                 }
-                catch (FileNotFoundException) { }
                 catch (Exception exception)
                 {
                     this.logger.Error(ErrorCode.SerMgr_TypeRegistrationFailure, "Failed to load type " + typeInfo.FullName + " in assembly " + assembly.FullName + ".", exception);

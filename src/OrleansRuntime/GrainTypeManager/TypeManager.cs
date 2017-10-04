@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Orleans.Streams;
 using Orleans.Runtime.Scheduler;
 using Orleans.Runtime.Versions;
@@ -13,7 +14,7 @@ namespace Orleans.Runtime
 {
     internal class TypeManager : SystemTarget, IClusterTypeManager, ISiloTypeManager, ISiloStatusListener, IDisposable
     {
-        private readonly Logger logger = LogManager.GetLogger("TypeManager");
+        private readonly Logger logger;
         private readonly GrainTypeManager grainTypeManager;
         private readonly ISiloStatusOracle statusOracle;
         private readonly ImplicitStreamSubscriberTable implicitStreamSubscriberTable;
@@ -34,8 +35,9 @@ namespace Orleans.Runtime
             TimeSpan refreshClusterMapInterval,
             ImplicitStreamSubscriberTable implicitStreamSubscriberTable,
             IInternalGrainFactory grainFactory,
-            CachedVersionSelectorManager versionSelectorManager)
-            : base(Constants.TypeManagerId, myAddr, hostAddr)
+            CachedVersionSelectorManager versionSelectorManager,
+            ILoggerFactory loggerFactory)
+            : base(Constants.TypeManagerId, myAddr, hostAddr, loggerFactory)
         {
             if (grainTypeManager == null)
                 throw new ArgumentNullException(nameof(grainTypeManager));
@@ -45,7 +47,7 @@ namespace Orleans.Runtime
                 throw new ArgumentNullException(nameof(scheduler));
             if (implicitStreamSubscriberTable == null)
                 throw new ArgumentNullException(nameof(implicitStreamSubscriberTable));
-
+            this.logger = new LoggerWrapper<TypeManager>(loggerFactory);
             this.grainTypeManager = grainTypeManager;
             this.statusOracle = oracle;
             this.implicitStreamSubscriberTable = implicitStreamSubscriberTable;

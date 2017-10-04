@@ -1,6 +1,8 @@
 using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Orleans.CodeGeneration;
 using Orleans.Configuration;
 using Orleans.Hosting;
@@ -31,14 +33,17 @@ namespace Orleans
             
             // Configure default services and build the container.
             this.serviceProviderBuilder.ConfigureServices(
-                services =>
+                (context, services) =>
                 {
                     services.TryAddSingleton(this.clientConfiguration ?? ClientConfiguration.StandardLoad());
                     services.TryAddFromExisting<IMessagingConfiguration, ClientConfiguration>();
+                    // register legacy configuration to new options mapping for Client options
+                    services.AddLegacyClientConfigurationSupport();
                     services.TryAddFromExisting<ITraceConfiguration, ClientConfiguration>();
                 });
             this.serviceProviderBuilder.ConfigureServices(AddDefaultServices);
-            var serviceProvider = this.serviceProviderBuilder.BuildServiceProvider();
+
+            var serviceProvider = this.serviceProviderBuilder.BuildServiceProvider(null);
 
             serviceProvider.GetRequiredService<OutsideRuntimeClient>().ConsumeServices(serviceProvider);
 
@@ -58,7 +63,8 @@ namespace Orleans
         /// <inheritdoc />
         public IClientBuilder ConfigureServices(Action<IServiceCollection> configureServices)
         {
-            this.serviceProviderBuilder.ConfigureServices(configureServices);
+            if (configureServices == null) throw new ArgumentNullException(nameof(configureServices));
+            this.serviceProviderBuilder.ConfigureServices((context, services) => configureServices(services));
             return this;
         }
 
@@ -72,12 +78,17 @@ namespace Orleans
         /// <inheritdoc />
         public IClientBuilder ConfigureContainer<TContainerBuilder>(Action<TContainerBuilder> configureContainer)
         {
-            this.serviceProviderBuilder.ConfigureContainer(configureContainer);
+            this.serviceProviderBuilder.ConfigureContainer((HostBuilderContext context, TContainerBuilder containerBuilder) => configureContainer(containerBuilder));
             return this;
         }
 
-        private static void AddDefaultServices(IServiceCollection services)
+        private static void AddDefaultServices(HostBuilderContext context, IServiceCollection services)
         {
+            services.TryAddSingleton<TelemetryManager>();
+            services.TryAddFromExisting<ITelemetryProducer, TelemetryManager>();
+			services.AddLogging();
+            //temporary change until runtime moved away from Logger
+            services.TryAddSingleton(typeof(LoggerWrapper<>));
             services.TryAddSingleton<LoadedProviderTypeLoaders>();
             services.TryAddSingleton<StatisticsProviderManager>();
             services.TryAddSingleton<TypeMetadataCache>();
@@ -95,7 +106,6 @@ namespace Orleans
                 sp => ActivatorUtilities.CreateInstance<GatewayProviderFactory>(sp).CreateGatewayListProvider());
             services.TryAddSingleton<SerializationManager>();
             services.TryAddSingleton<MessageFactory>();
-            services.TryAddSingleton<Factory<string, Logger>>(LogManager.GetLogger);
             services.TryAddSingleton<StreamProviderManager>();
             services.TryAddSingleton<ClientStatisticsManager>();
             services.TryAddFromExisting<IStreamProviderManager, StreamProviderManager>();

@@ -11,6 +11,8 @@ using TestExtensions;
 using UnitTests.GrainInterfaces;
 using UnitTests.Grains;
 using Xunit;
+using Orleans.Hosting;
+using Orleans.TestingHost.Utils;
 
 namespace UnitTests.General
 {
@@ -28,8 +30,47 @@ namespace UnitTests.General
                 options.ClientConfiguration.AddSimpleMessageStreamProvider("SMSProvider");
                 options.ClusterConfiguration.Globals.RegisterBootstrapProvider<PreInvokeCallbackBootrstrapProvider>(
                     "PreInvokeCallbackBootrstrapProvider");
-                options.ClusterConfiguration.UseStartupType<SiloInvokerTestStartup>();
+                options.UseSiloBuilderFactory<SiloInvokerTestSiloBuilderFactory>();
                 return new TestCluster(options);
+            }
+
+            private class SiloInvokerTestSiloBuilderFactory : ISiloBuilderFactory
+            {
+                public ISiloHostBuilder CreateSiloBuilder(string siloName, ClusterConfiguration clusterConfiguration)
+                {
+                    return new SiloHostBuilder()
+                        .ConfigureSiloName(siloName)
+                        .UseConfiguration(clusterConfiguration)
+                        .ConfigureServices(ConfigureServices)
+                        .ConfigureLogging(builder => TestingUtils.ConfigureDefaultLoggingBuilder(builder, clusterConfiguration.GetOrCreateNodeConfigurationForSilo(siloName).TraceFileName));
+                }
+            }
+            
+            private static void ConfigureServices(IServiceCollection services)
+            {
+                const string Key = GrainCallFilterTestConstants.Key;
+
+                services.AddGrainCallFilter(context =>
+                {
+                    if (string.Equals(context.Method.Name, nameof(IGrainCallFilterTestGrain.GetRequestContext)))
+                    {
+                        if (RequestContext.Get(Key) != null) throw new InvalidOperationException();
+                        RequestContext.Set(Key, "1");
+                    }
+
+                    return context.Invoke();
+                });
+
+                services.AddGrainCallFilter(context =>
+                {
+                    if (string.Equals(context.Method.Name, nameof(IGrainCallFilterTestGrain.GetRequestContext)))
+                    {
+                        var value = RequestContext.Get(Key) as string;
+                        if (value != null) RequestContext.Set(Key, value + '2');
+                    }
+
+                    return context.Invoke();
+                });
             }
         }
 
@@ -194,38 +235,6 @@ namespace UnitTests.General
             // This grain method throws, but the exception should be handled by one of the filters and converted
             // into a specific message.
             await Assert.ThrowsAsync<InvalidCastException>(() => grain.IncorrectResultType());
-        }
-    }
-
-    public class SiloInvokerTestStartup
-    {
-        private const string Key = GrainCallFilterTestConstants.Key;
-
-        public IServiceProvider ConfigureServices(IServiceCollection services)
-        {
-            services.AddGrainCallFilter(context =>
-            {
-                if (string.Equals(context.Method.Name, nameof(IGrainCallFilterTestGrain.GetRequestContext)))
-                {
-                    if (RequestContext.Get(Key) != null) throw new InvalidOperationException();
-                    RequestContext.Set(Key, "1");
-                }
-
-                return context.Invoke();
-            });
-
-            services.AddGrainCallFilter(context =>
-            {
-                if (string.Equals(context.Method.Name, nameof(IGrainCallFilterTestGrain.GetRequestContext)))
-                {
-                    var value = RequestContext.Get(Key) as string;
-                    if (value != null) RequestContext.Set(Key, value + '2');
-                }
-
-                return context.Invoke();
-            });
-
-            return services.BuildServiceProvider();
         }
     }
 

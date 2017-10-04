@@ -1,6 +1,6 @@
-using System.Runtime.CompilerServices;
+using Orleans;
 using Orleans.CodeGeneration;
-using Orleans.Transactions;
+using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("ClientGenerator")]
 [assembly: InternalsVisibleTo("OrleansCounterControl")]
@@ -31,4 +31,4 @@ using Orleans.Transactions;
 [assembly: InternalsVisibleTo("AWSUtils.Tests")]
 [assembly: InternalsVisibleTo("GoogleUtils.Tests")]
 
-[assembly: GenerateSerializer(typeof(TransactionalExtensionExtensions.TransactionalResourceExtensionWrapper))]
+[assembly: KnownAssembly(typeof(IGrain))]

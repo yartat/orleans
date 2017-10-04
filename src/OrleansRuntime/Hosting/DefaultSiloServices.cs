@@ -1,4 +1,3 @@
-using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Orleans.CodeGeneration;
@@ -16,7 +15,6 @@ using Orleans.Runtime.Placement;
 using Orleans.Runtime.Providers;
 using Orleans.Runtime.ReminderService;
 using Orleans.Runtime.Scheduler;
-using Orleans.Runtime.Utilities;
 using Orleans.Runtime.Versions;
 using Orleans.Runtime.Versions.Compatibility;
 using Orleans.Runtime.Versions.Selector;
@@ -33,20 +31,23 @@ using Orleans.Runtime.Storage;
 using Orleans.Transactions;
 using Orleans.LogConsistency;
 using Orleans.Storage;
+using Microsoft.Extensions.Logging;
+using Orleans.Runtime.Utilities;
+using System;
 
 namespace Orleans.Hosting
 {
     internal static class DefaultSiloServices
     {
-        internal static void AddDefaultServices(IServiceCollection services)
+        internal static void AddDefaultServices(HostBuilderContext context, IServiceCollection services)
         {
             services.AddOptions();
 
             // Register system services.
-            services.TryAddSingleton<ISilo, SiloWrapper>();
+            services.TryAddSingleton<ISiloHost, SiloWrapper>();
             services.TryAddFromExisting<ILocalSiloDetails, SiloInitializationParameters>();
             services.TryAddSingleton(sp => sp.GetRequiredService<SiloInitializationParameters>().ClusterConfig);
-            services.TryAddSingleton(sp => sp.GetRequiredService<SiloInitializationParameters>().GlobalConfig);
+            services.TryAddSingleton(sp => sp.GetRequiredService<SiloInitializationParameters>().ClusterConfig.Globals);
             services.TryAddTransient(sp => sp.GetRequiredService<SiloInitializationParameters>().NodeConfig);
             services.TryAddSingleton<Factory<NodeConfiguration>>(
                 sp =>
@@ -55,7 +56,27 @@ namespace Orleans.Hosting
                     return () => initializationParams.NodeConfig;
                 });
             services.TryAddFromExisting<IMessagingConfiguration, GlobalConfiguration>();
+            // register legacy configuration to new options mapping for Silo options
+            services.AddLegacyClusterConfigurationSupport();
+            services.PostConfigure<SiloMessagingOptions>(options =>
+            {
+                //
+                // Assign environment specific defaults post configuration if user did not configured otherwise.
+                //
+
+                if (options.SiloSenderQueues==0)
+                {
+                    options.SiloSenderQueues = Environment.ProcessorCount;
+                }
+
+                if (options.GatewaySenderQueues==0)
+                {
+                    options.GatewaySenderQueues = Environment.ProcessorCount;
+                }
+            });
             services.TryAddFromExisting<ITraceConfiguration, NodeConfiguration>();
+            services.TryAddSingleton<TelemetryManager>();
+            services.TryAddFromExisting<ITelemetryProducer, TelemetryManager>();
 
             // queue balancer contructing related
             services.TryAddTransient<StaticClusterConfigDeploymentBalancer>();
@@ -64,24 +85,34 @@ namespace Orleans.Hosting
             services.TryAddTransient<ConsistentRingQueueBalancer>();
             services.TryAddTransient(typeof(IStreamSubscriptionObserver<>), typeof(StreamSubscriptionObserverProxy<>));
 
+            services.TryAddSingleton<ProviderManagerSystemTarget>();
+
             services.TryAddSingleton<StatisticsProviderManager>();
+            services.AddFromExisting<IProviderManager, StatisticsProviderManager>();
 
             // storage providers
             services.TryAddSingleton<StorageProviderManager>();
+            services.AddFromExisting<IProviderManager, StorageProviderManager>();
             services.TryAddFromExisting<IKeyedServiceCollection<string, IStorageProvider>, StorageProviderManager>(); // as named services
             services.TryAddSingleton<IStorageProvider>(sp => sp.GetRequiredService<StorageProviderManager>().GetDefaultProvider()); // default
 
             // log concistency providers
             services.TryAddSingleton<LogConsistencyProviderManager>();
+            services.AddFromExisting<IProviderManager, LogConsistencyProviderManager>();
             services.TryAddFromExisting<IKeyedServiceCollection<string, ILogConsistencyProvider>, LogConsistencyProviderManager>(); // as named services
             services.TryAddSingleton<ILogConsistencyProvider>(sp => sp.GetRequiredService<LogConsistencyProviderManager>().GetDefaultProvider()); // default
 
             services.TryAddSingleton<BootstrapProviderManager>();
+            services.AddFromExisting<IProviderManager, BootstrapProviderManager>();
             services.TryAddSingleton<LoadedProviderTypeLoaders>();
+            services.AddLogging();
+            //temporary change until runtime moved away from Logger
+            services.TryAddSingleton(typeof(LoggerWrapper<>));
             services.TryAddSingleton<SerializationManager>();
             services.TryAddSingleton<ITimerRegistry, TimerRegistry>();
             services.TryAddSingleton<IReminderRegistry, ReminderRegistry>();
             services.TryAddSingleton<IStreamProviderManager, StreamProviderManager>();
+            services.AddFromExisting<IProviderManager, IStreamProviderManager>();
             services.TryAddSingleton<GrainRuntime>();
             services.TryAddSingleton<IGrainRuntime, GrainRuntime>();
             services.TryAddSingleton<OrleansTaskScheduler>();
@@ -101,7 +132,6 @@ namespace Orleans.Hosting
             services.TryAddFromExisting<ICorePerformanceMetrics, ISiloPerformanceMetrics>();
             services.TryAddSingleton<SiloAssemblyLoader>();
             services.TryAddSingleton<GrainTypeManager>();
-            services.TryAddFromExisting<IMessagingConfiguration, GlobalConfiguration>();
             services.TryAddSingleton<MessageCenter>();
             services.TryAddFromExisting<IMessageCenter, MessageCenter>();
             services.TryAddFromExisting<ISiloMessageCenter, MessageCenter>();
@@ -128,7 +158,6 @@ namespace Orleans.Hosting
             services.TryAddFromExisting<IProviderRuntime, SiloProviderRuntime>();
             services.TryAddSingleton<ImplicitStreamSubscriberTable>();
             services.TryAddSingleton<MessageFactory>();
-            services.TryAddSingleton<Factory<string, Logger>>(LogManager.GetLogger);
             services.TryAddSingleton<CodeGeneratorManager>();
 
             services.TryAddSingleton<IGrainRegistrar<GlobalSingleInstanceRegistration>, GlobalSingleInstanceRegistrar>();
@@ -176,21 +205,21 @@ namespace Orleans.Hosting
                 {
                     var globalConfig = sp.GetRequiredService<GlobalConfiguration>();
                     var siloDetails = sp.GetRequiredService<ILocalSiloDetails>();
+                    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
                     if (globalConfig.UseVirtualBucketsConsistentRing)
                     {
-                        return new VirtualBucketsRingProvider(siloDetails.SiloAddress, globalConfig.NumVirtualBucketsConsistentRing);
+                        return new VirtualBucketsRingProvider(siloDetails.SiloAddress, loggerFactory, globalConfig.NumVirtualBucketsConsistentRing);
                     }
 
-                    return new ConsistentRingProvider(siloDetails.SiloAddress);
+                    return new ConsistentRingProvider(siloDetails.SiloAddress, loggerFactory);
                 });
             
-            services.AddSingleton(typeof(IKeyedServiceCollection<,>), typeof(KeyedServiceCollection<,>));
+            services.TryAddSingleton(typeof(IKeyedServiceCollection<,>), typeof(KeyedServiceCollection<,>));
 
             // Transactions
-            services.AddSingleton<ITransactionAgent,TransactionAgent>();
-            services.AddSingleton(sp => new Lazy<ITransactionAgent>(() => sp.GetRequiredService<ITransactionAgent>()));
-            services.AddSingleton<TransactionServiceGrainFactory>();
-            services.AddSingleton(sp => sp.GetRequiredService<TransactionServiceGrainFactory>().CreateTransactionManagerService() );
+            services.TryAddSingleton<ITransactionAgent, TransactionAgent>();
+            services.TryAddSingleton<Factory<ITransactionAgent>>(sp => () => sp.GetRequiredService<ITransactionAgent>());
+            services.TryAddSingleton<ITransactionManagerService, DisabledTransactionManagerService>();
         }
     }
 }

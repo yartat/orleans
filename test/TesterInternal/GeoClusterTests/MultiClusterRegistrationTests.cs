@@ -91,12 +91,12 @@ namespace UnitTests.GeoClusterTests
                 await t;
         }
 
-        public Task StartClustersAndClients(params short[] silos)
+        private Task StartClustersAndClients(params short[] silos)
         {
             return StartClustersAndClients(null, null, silos);
         }
 
-        public Task StartClustersAndClients(Action<ClusterConfiguration> config_customizer, Action<ClientConfiguration> clientconfig_customizer, params short[] silos)
+        private Task StartClustersAndClients(Action<ClusterConfiguration> config_customizer, Action<ClientConfiguration> clientconfig_customizer, params short[] silos)
         {
             WriteLog("Creating clusters and clients...");
             var stopwatch = new System.Diagnostics.Stopwatch();
@@ -113,14 +113,6 @@ namespace UnitTests.GeoClusterTests
             {
                 c.AddAzureTableStorageProvider("PubSubStore", deleteOnClear:true, useJsonFormat:false, connectionString: TestDefaultConfiguration.DataConnectionString);
                 c.AddSimpleMessageStreamProvider("SMSProvider", fireAndForgetDelivery: false);
-
-                // logging  
-                foreach (var o in c.Overrides)
-                {
-                    o.Value.TraceLevelOverrides.Add(new Tuple<string, Severity>("Runtime.Catalog", Severity.Verbose));
-                    o.Value.TraceLevelOverrides.Add(new Tuple<string, Severity>("Runtime.Dispatcher", Severity.Verbose2));
-                    o.Value.TraceLevelOverrides.Add(new Tuple<string, Severity>("Orleans.GrainDirectory.LocalGrainDirectory", Severity.Verbose2));
-                }
 
                 config_customizer?.Invoke(c);
             };
@@ -280,8 +272,8 @@ namespace UnitTests.GeoClusterTests
                 return random.Next();
         }
 
-        [Fact]
-        public async Task SequentialCalls()
+      
+        private async Task SequentialCalls()
         {
             await Task.Yield();
 
@@ -296,7 +288,7 @@ namespace UnitTests.GeoClusterTests
             AssertEqual(list.Count() + 1, Clients[0][0].CallGrain(x), gref);
         }
 
-        public async Task ParallelCalls()
+        private async Task ParallelCalls()
         {
             await Task.Yield();
 
@@ -311,8 +303,7 @@ namespace UnitTests.GeoClusterTests
             AssertEqual(list.Count + 1, Clients[0][0].CallGrain(x), gref);
         }
 
-        [Fact]
-        public async Task ManyParallelCalls()
+        private async Task ManyParallelCalls()
         {
             await Task.Yield();
 
@@ -329,7 +320,7 @@ namespace UnitTests.GeoClusterTests
             AssertEqual(21, Clients[0][0].CallGrain(x), gref);
         }
 
-        public async Task Deact()
+        private async Task Deact()
         {            
             var x = Next();
             var gref = Clients[0][0].GetGrainRef(x);
@@ -373,8 +364,8 @@ namespace UnitTests.GeoClusterTests
             }
         }
 
-        [Fact]
-        public async Task ObserverBasedClientNotification()
+
+        private async Task ObserverBasedClientNotification()
         {
             var x = Next();
             var gref = Clients[0][0].GetGrainRef(x);
@@ -415,7 +406,7 @@ namespace UnitTests.GeoClusterTests
                 AssertEqual(sortedresults[i], i, gref);
         }
 
-        public async Task StreamBasedClientNotification()
+        private async Task StreamBasedClientNotification()
         {
             var x = Next();
             var gref = Clients[0][0].GetGrainRef(x);

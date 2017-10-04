@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Orleans.Runtime;
 using Orleans.Concurrency;
 
@@ -22,23 +23,22 @@ namespace Orleans.Transactions
         private readonly HashSet<long> outstandingCommits;
 
         private readonly Logger logger;
-
+        private readonly ILoggerFactory loggerFactory;
         private IGrainTimer requestProcessor;
         private Task startTransactionsTask = Task.CompletedTask;
         private Task commitTransactionsTask = Task.CompletedTask;
 
         public long ReadOnlyTransactionId { get; private set; }
 
-        public TransactionAgent(ILocalSiloDetails siloDetails, ITransactionManagerService tmService)
-            : base(Constants.TransactionAgentSystemTargetId, siloDetails.SiloAddress, siloDetails.HostSiloAddress)
+        public TransactionAgent(ILocalSiloDetails siloDetails, ITransactionManagerService tmService, ILoggerFactory loggerFactory)
+            : base(Constants.TransactionAgentSystemTargetId, siloDetails.SiloAddress, siloDetails.HostSiloAddress, loggerFactory)
         {
-            logger = LogManager.GetLogger("TransactionAgent");
+            logger = new LoggerWrapper<TransactionAgent>(loggerFactory);
             this.tmService = tmService;
-            tmService = null;
             ReadOnlyTransactionId = 0;
             //abortSequenceNumber = 0;
             abortLowerBound = 0;
-
+            this.loggerFactory = loggerFactory;
 
             abortedTransactions = new ConcurrentDictionary<long, long>();
             transactionStartQueue = new ConcurrentQueue<Tuple<TimeSpan, TaskCompletionSource<long>>>();
@@ -187,40 +187,7 @@ namespace Orleans.Transactions
                 {
                     logger.Verbose(ErrorCode.Transactions_SendingTMRequest, "Calling TM to start {0} transactions", startingTransactions.Count);
 
-                    startTransactionsTask = this.tmService.StartTransactions(startingTransactions).ContinueWith(
-                        async startRequest =>
-                        {
-                            try
-                            {
-                                var startResponse = await startRequest;
-                                var startedIds = startResponse.TransactionId;
-
-                                // reply to clients with results
-                                for (int i = 0; i < startCompletions.Count; i++)
-                                {
-                                    TransactionsStatisticsGroup.OnTransactionStarted();
-                                    startCompletions[i].SetResult(startedIds[i]);
-                                }
-
-                                // Refresh cached values using new values from TM.
-                                this.ReadOnlyTransactionId = Math.Max(this.ReadOnlyTransactionId, startResponse.ReadOnlyTransactionId);
-                                this.abortLowerBound = Math.Max(this.abortLowerBound, startResponse.AbortLowerBound);
-                                logger.Verbose(ErrorCode.Transactions_ReceivedTMResponse, "{0} transactions started. readOnlyTransactionId {1}, abortLowerBound {2}", startingTransactions.Count, ReadOnlyTransactionId, abortLowerBound);
-                            }
-                            catch (Exception e)
-                            {
-                                logger.Error(ErrorCode.Transactions_TMError, "", e);
-
-                                foreach (var completion in startCompletions)
-                                {
-                                    TransactionsStatisticsGroup.OnTransactionStartFailed();
-                                    completion.SetException(new OrleansStartTransactionFailedException(e));
-                                }
-                            }
-
-                            startingTransactions.Clear();
-                            startCompletions.Clear();
-                        });
+                    startTransactionsTask = this.StartTransactions(startingTransactions, startCompletions);
                 }
 
                 if ((committingTransactions.Count > 0 || outstandingCommits.Count > 0) && commitTransactionsTask.IsCompleted)
@@ -307,6 +274,40 @@ namespace Orleans.Transactions
 
         }
 
+        private async Task StartTransactions(List<TimeSpan> startingTransactions, List<TaskCompletionSource<long>> startCompletions)
+        {
+            try
+            {
+                StartTransactionsResponse startResponse = await this.tmService.StartTransactions(startingTransactions);
+                List<long> startedIds = startResponse.TransactionId;
+
+                // reply to clients with results
+                for (int i = 0; i < startCompletions.Count; i++)
+                {
+                    TransactionsStatisticsGroup.OnTransactionStarted();
+                    startCompletions[i].SetResult(startedIds[i]);
+                }
+
+                // Refresh cached values using new values from TM.
+                this.ReadOnlyTransactionId = Math.Max(this.ReadOnlyTransactionId, startResponse.ReadOnlyTransactionId);
+                this.abortLowerBound = Math.Max(this.abortLowerBound, startResponse.AbortLowerBound);
+                logger.Verbose(ErrorCode.Transactions_ReceivedTMResponse, "{0} Transactions started. readOnlyTransactionId {1}, abortLowerBound {2}", startingTransactions.Count, ReadOnlyTransactionId, abortLowerBound);
+            }
+            catch (Exception e)
+            {
+                logger.Error(ErrorCode.Transactions_TMError, "Transaction manager failed to start transactions.", e);
+
+                foreach (var completion in startCompletions)
+                {
+                    TransactionsStatisticsGroup.OnTransactionStartFailed();
+                    completion.SetException(new OrleansStartTransactionFailedException(e));
+                }
+            }
+
+            startingTransactions.Clear();
+            startCompletions.Clear();
+        }
+
         private Task WaitForWork()
         {
             // Returns a task that can be waited on until the RequestProcessor has
@@ -334,7 +335,7 @@ namespace Orleans.Transactions
 
         public Task Start()
         {
-            requestProcessor = GrainTimer.FromTaskCallback(this.RuntimeClient.Scheduler, ProcessRequests, null, TimeSpan.FromMilliseconds(0), TimeSpan.FromMilliseconds(10), "TransactionAgent");
+            requestProcessor = GrainTimer.FromTaskCallback(this.RuntimeClient.Scheduler, this.loggerFactory.CreateLogger<GrainTimer>(), ProcessRequests, null, TimeSpan.FromMilliseconds(0), TimeSpan.FromMilliseconds(10), "TransactionAgent");
             requestProcessor.Start();
             return Task.CompletedTask;
         }

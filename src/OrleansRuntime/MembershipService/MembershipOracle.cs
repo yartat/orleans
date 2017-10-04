@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Orleans.Runtime.Configuration;
 using Orleans.Runtime.Messaging;
 using Orleans.Runtime.Scheduler;
@@ -16,7 +17,7 @@ namespace Orleans.Runtime.MembershipService
         private IMembershipTable membershipTableProvider;
         private readonly MembershipOracleData membershipOracleData;
         private Dictionary<SiloAddress, int> probedSilos;  // map from currently probed silos to the number of failed probes
-        private readonly LoggerImpl logger;
+        private readonly Logger logger;
         private readonly ClusterConfiguration orleansConfig;
         private readonly NodeConfiguration nodeConfig;
         private SiloAddress MyAddress { get { return membershipOracleData.MyAddress; } }
@@ -33,19 +34,20 @@ namespace Orleans.Runtime.MembershipService
         private readonly TimeSpan EXP_BACKOFF_ERROR_MAX;
         private readonly TimeSpan EXP_BACKOFF_CONTENTION_MAX; // set based on config
         private static readonly TimeSpan EXP_BACKOFF_STEP = TimeSpan.FromMilliseconds(1000);
-
+        private readonly ILogger timerLogger;
         public SiloStatus CurrentStatus { get { return membershipOracleData.CurrentStatus; } } // current status of this silo.
 
         public string SiloName { get { return membershipOracleData.SiloName; } }
         public SiloAddress SiloAddress { get { return membershipOracleData.MyAddress; } }
         private TimeSpan AllowedIAmAliveMissPeriod { get { return orleansConfig.Globals.IAmAliveTablePublishTimeout.Multiply(orleansConfig.Globals.NumMissedTableIAmAliveLimit); } }
-
-        public MembershipOracle(ILocalSiloDetails siloDetails, ClusterConfiguration clusterConfiguration, NodeConfiguration nodeConfiguration, MembershipTableFactory membershipTableFactory, IInternalGrainFactory grainFactory)
-            : base(Constants.MembershipOracleId, siloDetails.SiloAddress, siloDetails.HostSiloAddress)
+        private readonly ILoggerFactory loggerFactory;
+        public MembershipOracle(ILocalSiloDetails siloDetails, ClusterConfiguration clusterConfiguration, NodeConfiguration nodeConfiguration, MembershipTableFactory membershipTableFactory, IInternalGrainFactory grainFactory, ILoggerFactory loggerFactory)
+            : base(Constants.MembershipOracleId, siloDetails.SiloAddress, siloDetails.HostSiloAddress, loggerFactory)
         {
+            this.loggerFactory = loggerFactory;
             this.membershipTableFactory = membershipTableFactory;
             this.grainFactory = grainFactory;
-            logger = LogManager.GetLogger("MembershipOracle");
+            logger = new LoggerWrapper<MembershipOracle>(loggerFactory);
             membershipOracleData = new MembershipOracleData(siloDetails, nodeConfiguration, clusterConfiguration.Globals, logger);
             probedSilos = new Dictionary<SiloAddress, int>();
             orleansConfig = clusterConfiguration;
@@ -54,6 +56,7 @@ namespace Orleans.Runtime.MembershipService
             TimeSpan backOffMax = StandardExtensions.Max(EXP_BACKOFF_STEP.Multiply(orleansConfig.Globals.ExpectedClusterSize), SiloMessageSender.CONNECTION_RETRY_DELAY.Multiply(2));
             EXP_BACKOFF_CONTENTION_MAX = backOffMax;
             EXP_BACKOFF_ERROR_MAX = backOffMax;
+            timerLogger = this.loggerFactory.CreateLogger<GrainTimer>();
         }
 
         #region ISiloStatusOracle Members
@@ -62,12 +65,7 @@ namespace Orleans.Runtime.MembershipService
         {
             try
             {
-                logger.Info(ErrorCode.MembershipStarting,
-                    "MembershipOracle starting on host = " + membershipOracleData.MyHostname + " address = " +
-                    MyAddress.ToLongString() +
-                    (MyHostAddress != null ? "(hosting on " + MyHostAddress.ToLongString() + ")" : string.Empty) +
-                    " at " + LogFormatter.PrintDate(membershipOracleData.SiloStartTime) + ", backOffMax = " +
-                    EXP_BACKOFF_CONTENTION_MAX);
+                logger.Info(ErrorCode.MembershipStarting, "MembershipOracle starting on host = " + membershipOracleData.MyHostname + " address = " + MyAddress.ToLongString() + " at " + LogFormatter.PrintDate(membershipOracleData.SiloStartTime) + ", backOffMax = " + EXP_BACKOFF_CONTENTION_MAX);
 
                 // Create the membership table.
                 this.membershipTableProvider = await this.membershipTableFactory.GetMembershipTable();
@@ -156,9 +154,9 @@ namespace Orleans.Runtime.MembershipService
                     var randomProbeOffset = random.NextTimeSpan(orleansConfig.Globals.ProbeTimeout);
                     if (timerGetTableUpdates != null)
                         timerGetTableUpdates.Dispose();
-
                     timerGetTableUpdates = GrainTimer.FromTimerCallback(
                         this.RuntimeClient.Scheduler,
+                        timerLogger,
                         OnGetTableUpdateTimer,
                         null,
                         randomTableOffset,
@@ -172,6 +170,7 @@ namespace Orleans.Runtime.MembershipService
 
                     timerProbeOtherSilos = GrainTimer.FromTimerCallback(
                         this.RuntimeClient.Scheduler,
+                        timerLogger,
                         OnProbeOtherSilosTimer,
                         null,
                         randomProbeOffset,
@@ -202,6 +201,7 @@ namespace Orleans.Runtime.MembershipService
 
             timerIAmAliveUpdateInTable = GrainTimer.FromTimerCallback(
                 this.RuntimeClient.Scheduler,
+                this.timerLogger,
                 OnIAmAliveUpdateInTableTimer,
                 null,
                 TimeSpan.Zero,
@@ -369,7 +369,7 @@ namespace Orleans.Runtime.MembershipService
             {
                 if (logger.IsVerbose) logger.Verbose("-Attempting CleanupTableEntries #{0}", counter);
                 MembershipTableData table = await membershipTableProvider.ReadAll();
-                logger.LogWithoutBulkingAndTruncating(Severity.Info, ErrorCode.MembershipReadAll_Cleanup, "-CleanupTable called on silo startup. Membership table {0}",
+                logger.Info(ErrorCode.MembershipReadAll_Cleanup, "-CleanupTable called on silo startup. Membership table {0}",
                     table.ToString());
 
                 return await CleanupTableEntries(table);
@@ -495,7 +495,7 @@ namespace Orleans.Runtime.MembershipService
                         !(entry.SiloAddress.Equals(MyAddress) || entry.SiloAddress.Equals(MyHostAddress)) &&
                         !HasMissedIAmAlives(entry, false)).ToList();
 
-            logger.LogWithoutBulkingAndTruncating(Severity.Info, ErrorCode.MembershipSendingPreJoinPing, "About to send pings to {0} nodes in order to validate communication in the Joining state. Pinged nodes = {1}",
+            logger.Info(ErrorCode.MembershipSendingPreJoinPing, "About to send pings to {0} nodes in order to validate communication in the Joining state. Pinged nodes = {1}",
                 members.Count.ToString(), Utils.EnumerableToString(members, entry => entry.ToFullString(true)));
 
             var pingPromises = new List<Task>();
@@ -535,7 +535,7 @@ namespace Orleans.Runtime.MembershipService
 
         private async Task ProcessTableUpdate(MembershipTableData table, string caller, bool logAtInfoLevel = false)
         {
-            if (logAtInfoLevel) logger.LogWithoutBulkingAndTruncating(Severity.Info, ErrorCode.MembershipReadAll_1, "-ReadAll (called from {0}) Membership table {1}", caller, table.ToString());
+            if (logAtInfoLevel) logger.Info(ErrorCode.MembershipReadAll_1, "-ReadAll (called from {0}) Membership table {1}", caller, table.ToString());
             else if (logger.IsVerbose) logger.Verbose("-ReadAll (called from {0}) Membership table {1}", caller, table.ToString());
 
             // Even if failed to clean up old entries from the table, still process the new entries. Will retry cleanup next time.
@@ -571,7 +571,7 @@ namespace Orleans.Runtime.MembershipService
                     UpdateListOfProbedSilos();
             }
 
-            if (localViewChanged) logger.LogWithoutBulkingAndTruncating(Severity.Info, ErrorCode.MembershipReadAll_2,
+            if (localViewChanged) logger.Info(ErrorCode.MembershipReadAll_2,
                 "-ReadAll (called from {0}, after local view changed, with removed duplicate deads) Membership table: {1}",
                 caller, table.SupressDuplicateDeads().ToString());
         }
@@ -777,7 +777,7 @@ namespace Orleans.Runtime.MembershipService
 
             if (!AreTheSame(probedSilos.Keys, newProbedSilos.Keys))
             {
-                logger.LogWithoutBulkingAndTruncating(Severity.Info, ErrorCode.MembershipWatchList, "Will watch (actively ping) {0} silos: {1}",
+                logger.Info(ErrorCode.MembershipWatchList, "Will watch (actively ping) {0} silos: {1}",
                     newProbedSilos.Count, Utils.EnumerableToString(newProbedSilos.Keys, silo => silo.ToLongString()));
             }
 

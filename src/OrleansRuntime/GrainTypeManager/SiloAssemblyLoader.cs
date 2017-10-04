@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Orleans.CodeGeneration;
 using Orleans.GrainDirectory;
 using Orleans.LogConsistency;
@@ -15,12 +16,13 @@ namespace Orleans.Runtime
     internal class SiloAssemblyLoader
     {
         private readonly List<string> excludedGrains;
-        private readonly LoggerImpl logger = LogManager.GetLogger("AssemblyLoader.Silo");
+        private readonly Logger logger;
         private readonly Dictionary<string, SearchOption> directories;
         private readonly MultiClusterRegistrationStrategyManager registrationManager;
 
-        public SiloAssemblyLoader(NodeConfiguration nodeConfig, MultiClusterRegistrationStrategyManager registrationManager)
+        public SiloAssemblyLoader(NodeConfiguration nodeConfig, MultiClusterRegistrationStrategyManager registrationManager, LoggerWrapper<SiloAssemblyLoader> logger)
         {
+            this.logger = logger;
             IDictionary<string, SearchOption> additionalDirectories = nodeConfig.AdditionalAssemblyDirectories;
             this.registrationManager = registrationManager;
             this.excludedGrains = nodeConfig.ExcludedGrainTypes != null
@@ -73,7 +75,7 @@ namespace Orleans.Runtime
         public IDictionary<string, GrainTypeData> GetGrainClassTypes()
         {
             var result = new Dictionary<string, GrainTypeData>();
-            Type[] grainTypes = TypeUtils.GetTypes(TypeUtils.IsConcreteGrainClass, logger, false).ToArray();
+            Type[] grainTypes = TypeUtils.GetTypes(TypeUtils.IsConcreteGrainClass, logger).ToArray();
 
             foreach (var grainType in grainTypes)
             {
@@ -121,7 +123,7 @@ namespace Orleans.Runtime
         public IEnumerable<KeyValuePair<int, Type>> GetGrainMethodInvokerTypes()
         {
             var result = new Dictionary<int, Type>();
-            Type[] types = TypeUtils.GetTypes(TypeUtils.IsGrainMethodInvokerType, logger, false).ToArray();
+            Type[] types = TypeUtils.GetTypes(TypeUtils.IsGrainMethodInvokerType, logger).ToArray();
 
             foreach (var type in types)
             {
@@ -146,7 +148,7 @@ namespace Orleans.Runtime
                 new GrainTypeData(grainType, this.registrationManager);
         }
 
-        private static void LogGrainTypesFound(LoggerImpl logger, Dictionary<string, GrainTypeData> grainTypeData)
+        private static void LogGrainTypesFound(Logger logger, Dictionary<string, GrainTypeData> grainTypeData)
         {
             var sb = new StringBuilder();
             sb.AppendLine(String.Format("Loaded grain type summary for {0} types: ", grainTypeData.Count));
@@ -184,7 +186,7 @@ namespace Orleans.Runtime
                 }
             }
             var report = sb.ToString();
-            logger.LogWithoutBulkingAndTruncating(Severity.Info, ErrorCode.Loader_GrainTypeFullList, report);
+            logger.Info(ErrorCode.Loader_GrainTypeFullList, report);
         }
     }
 }

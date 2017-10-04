@@ -18,7 +18,7 @@ namespace Orleans.Runtime
         /// <summary>
         /// The assembly name of the core Orleans assembly.
         /// </summary>
-        private static readonly AssemblyName OrleansCoreAssembly = typeof(IGrain).GetTypeInfo().Assembly.GetName();
+        private static readonly AssemblyName OrleansCoreAssembly = typeof(RuntimeVersion).GetTypeInfo().Assembly.GetName();
 
         private static readonly ConcurrentDictionary<Tuple<Type, TypeFormattingOptions>, string> ParseableNameCache = new ConcurrentDictionary<Tuple<Type, TypeFormattingOptions>, string>();
 
@@ -513,6 +513,26 @@ namespace Orleans.Runtime
             return CachedTypeResolver.Instance.TryResolveType(fullName, out type);
         }
 
+        private static Lazy<bool> canUseReflectionOnly = new Lazy<bool>(() =>
+        {
+            try
+            {
+                CachedReflectionOnlyTypeResolver.Instance.TryResolveType(typeof(TypeUtils).AssemblyQualifiedName, out _);
+                return true;
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return false;
+            }
+            catch (Exception)
+            {
+                // if other exceptions not related to platform ocurr, assume that ReflectionOnly is supported
+                return true;
+            }
+        });
+
+        public static bool CanUseReflectionOnly => canUseReflectionOnly.Value;
+
         public static Type ResolveReflectionOnlyType(string assemblyQualifiedName)
         {
             return CachedReflectionOnlyTypeResolver.Instance.ResolveType(assemblyQualifiedName);
@@ -520,15 +540,22 @@ namespace Orleans.Runtime
 
         public static Type ToReflectionOnlyType(Type type)
         {
-            return type.Assembly.ReflectionOnly ? type : ResolveReflectionOnlyType(type.AssemblyQualifiedName);
+            if (CanUseReflectionOnly)
+            {
+                return type.Assembly.ReflectionOnly ? type : ResolveReflectionOnlyType(type.AssemblyQualifiedName);
+            }
+            else
+            {
+                return type;
+            }
         }
 
-        public static IEnumerable<Type> GetTypes(Assembly assembly, Predicate<Type> whereFunc, Logger logger, bool logException)
+        public static IEnumerable<Type> GetTypes(Assembly assembly, Predicate<Type> whereFunc, Logger logger)
         {
-            return assembly.IsDynamic ? Enumerable.Empty<Type>() : GetDefinedTypes(assembly, logger, logException).Select(t => t.AsType()).Where(type => !type.GetTypeInfo().IsNestedPrivate && whereFunc(type));
+            return assembly.IsDynamic ? Enumerable.Empty<Type>() : GetDefinedTypes(assembly, logger).Select(t => t.AsType()).Where(type => !type.GetTypeInfo().IsNestedPrivate && whereFunc(type));
         }
 
-        public static IEnumerable<TypeInfo> GetDefinedTypes(Assembly assembly, Logger logger, bool logException)
+        public static IEnumerable<TypeInfo> GetDefinedTypes(Assembly assembly, Logger logger)
         {
             try
             {
@@ -536,7 +563,7 @@ namespace Orleans.Runtime
             }
             catch (Exception exception)
             {
-                if (logException && logger != null && logger.IsWarning)
+                if (logger != null && logger.IsWarning)
                 {
                     var message =
                         $"Exception loading types from assembly '{assembly.FullName}': {LogFormatter.PrintException(exception)}.";
@@ -555,14 +582,14 @@ namespace Orleans.Runtime
             }
         }
 
-        public static IEnumerable<Type> GetTypes(Predicate<Type> whereFunc, Logger logger, bool logExceptions)
+        public static IEnumerable<Type> GetTypes(Predicate<Type> whereFunc, Logger logger)
         {
             var assemblies = AppDomain.CurrentDomain.GetAssemblies();
             var result = new List<Type>();
             foreach (var assembly in assemblies)
             {
                 // there's no point in evaluating nested private types-- one of them fails to coerce to a reflection-only type anyhow.
-                var types = GetTypes(assembly, whereFunc, logger, logExceptions);
+                var types = GetTypes(assembly, whereFunc, logger);
                 result.AddRange(types);
             }
             return result;

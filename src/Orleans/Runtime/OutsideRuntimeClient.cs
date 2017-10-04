@@ -8,6 +8,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Orleans.CodeGeneration;
 using Orleans.Messaging;
 using Orleans.Providers;
@@ -15,6 +17,7 @@ using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
 using Orleans.Serialization;
 using Orleans.Streams;
+using Orleans.Configuration;
 
 namespace Orleans
 {
@@ -22,9 +25,11 @@ namespace Orleans
     {
         internal static bool TestOnlyThrowExceptionDuringInit { get; set; }
 
-        private Logger logger;
-
+        private ILogger logger;
+        private Logger callBackDataLogger;
+        private ILogger timerLogger;
         private ClientConfiguration config;
+        private ClientMessagingOptions clientMessagingOptions;
 
         private readonly ConcurrentDictionary<CorrelationId, CallbackData> callbacks;
         private readonly ConcurrentDictionary<GuidId, LocalObjectData> localObjects;
@@ -64,10 +69,8 @@ namespace Orleans
         private MessageFactory messageFactory;
         private IPAddress localAddress;
         private IGatewayListProvider gatewayListProvider;
-
+        private readonly ILoggerFactory loggerFactory;
         public SerializationManager SerializationManager { get; set; }
-
-        public Logger AppLogger { get; private set; }
 
         public ActivationAddress CurrentActivationAddress
         {
@@ -94,26 +97,30 @@ namespace Orleans
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Reliability", "CA2000:Dispose objects before losing scope",
             Justification = "MessageCenter is IDisposable but cannot call Dispose yet as it lives past the end of this method call.")]
-        public OutsideRuntimeClient()
+        public OutsideRuntimeClient(ILoggerFactory loggerFactory)
         {
+            this.loggerFactory = loggerFactory;
+            this.logger = loggerFactory.CreateLogger<OutsideRuntimeClient>();
             this.handshakeClientId = GrainId.NewClientId();
             tryResendMessage = TryResendMessage;
             unregisterCallback = msg => UnRegisterCallback(msg.Id);
             callbacks = new ConcurrentDictionary<CorrelationId, CallbackData>();
             localObjects = new ConcurrentDictionary<GuidId, LocalObjectData>();
+            this.callBackDataLogger = new LoggerWrapper<CallbackData>(loggerFactory);
+            this.timerLogger = loggerFactory.CreateLogger<SafeTimer>();
         }
 
         internal void ConsumeServices(IServiceProvider services)
         {
             this.ServiceProvider = services;
 
-            var connectionLostHandlers = services.GetServices<ConnectionToClusterLostHandler>();
+            var connectionLostHandlers = this.ServiceProvider.GetServices<ConnectionToClusterLostHandler>();
             foreach (var handler in connectionLostHandlers)
             {
                 this.ClusterConnectionLost += handler;
             }
 
-            var clientInvokeCallbacks = services.GetServices<ClientInvokeCallback>();
+            var clientInvokeCallbacks = this.ServiceProvider.GetServices<ClientInvokeCallback>();
             foreach (var handler in clientInvokeCallbacks)
             {
                 this.ClientInvokeCallback += handler;
@@ -124,24 +131,26 @@ namespace Orleans
             this.SerializationManager = this.ServiceProvider.GetRequiredService<SerializationManager>();
             this.messageFactory = this.ServiceProvider.GetService<MessageFactory>();
 
-            this.config = services.GetRequiredService<ClientConfiguration>();
+            this.config = this.ServiceProvider.GetRequiredService<ClientConfiguration>();
+
+            var resolvedClientMessagingOptions = this.ServiceProvider.GetRequiredService<IOptions<ClientMessagingOptions>>();
+            this.clientMessagingOptions = resolvedClientMessagingOptions.Value;
+
             this.GrainReferenceRuntime = this.ServiceProvider.GetRequiredService<IGrainReferenceRuntime>();
 
-            if (!LogManager.IsInitialized) LogManager.Initialize(config);
+            this.ServiceProvider.GetService<TelemetryManager>()?.AddFromConfiguration(this.ServiceProvider, config.TelemetryConfiguration);
+
             StatisticsCollector.Initialize(config);
             this.assemblyProcessor = this.ServiceProvider.GetRequiredService<AssemblyProcessor>();
             this.assemblyProcessor.Initialize();
 
-            logger = LogManager.GetLogger("OutsideRuntimeClient", LoggerType.Runtime);
-            this.AppLogger = LogManager.GetLogger("Application", LoggerType.Application);
-
-            BufferPool.InitGlobalBufferPool(config);
-
+            BufferPool.InitGlobalBufferPool(resolvedClientMessagingOptions);
 
             try
             {
                 LoadAdditionalAssemblies();
-                
+                //init logger for UnobservedExceptionsHandlerClass
+                UnobservedExceptionsHandlerClass.InitLogger(this.loggerFactory);
                 if (!UnobservedExceptionsHandlerClass.TrySetUnobservedExceptionHandler(UnhandledException))
                 {
                     logger.Warn(ErrorCode.Runtime_Error_100153, "Unable to set unobserved exception handler because it was already set.");
@@ -178,7 +187,7 @@ namespace Orleans
                 this.gatewayListProvider = this.ServiceProvider.GetRequiredService<IGatewayListProvider>();
                 if (StatisticsCollector.CollectThreadTimeTrackingStats)
                 {
-                    incomingMessagesThreadTimeTracking = new ThreadTrackingStatistic("ClientReceiver");
+                    incomingMessagesThreadTimeTracking = new ThreadTrackingStatistic("ClientReceiver", this.loggerFactory);
                 }
             }
             catch (Exception exc)
@@ -205,7 +214,7 @@ namespace Orleans
 
         private void LoadAdditionalAssemblies()
         {
-            var logger = LogManager.GetLogger("AssemblyLoader.Client", LoggerType.Runtime);
+            var logger = new LoggerWrapper("Orleans.AssemblyLoader.Client", this.loggerFactory);
 
             var directories =
                 new Dictionary<string, SearchOption>
@@ -249,13 +258,12 @@ namespace Orleans
         // used for testing to (carefully!) allow two clients in the same process
         private async Task StartInternal()
         {
-            await this.gatewayListProvider.InitializeGatewayListProvider(config, LogManager.GetLogger(gatewayListProvider.GetType().Name))
+            await this.gatewayListProvider.InitializeGatewayListProvider(config)
                                .WithTimeout(initTimeout);
 
             var generation = -SiloAddress.AllocateNewGeneration(); // Client generations are negative
             transport = ActivatorUtilities.CreateInstance<ProxiedMessageCenter>(this.ServiceProvider, localAddress, generation, handshakeClientId);
             transport.Start();
-            LogManager.MyIPEndPoint = transport.MyAddress.Endpoint; // transport.MyAddress is only set after transport is Started.
             CurrentActivationAddress = ActivationAddress.NewActivationAddress(transport.MyAddress, handshakeClientId);
 
             listeningCts = new CancellationTokenSource();
@@ -266,13 +274,16 @@ namespace Orleans
             Task.Run(
                 () =>
                 {
-                    try
+                    while (listenForMessages && !ct.IsCancellationRequested)
                     {
-                        RunClientMessagePump(ct);
-                    }
-                    catch (Exception exc)
-                    {
-                        logger.Error(ErrorCode.Runtime_Error_100326, "RunClientMessagePump has thrown exception", exc);
+                        try
+                        {
+                            RunClientMessagePump(ct);
+                        }
+                        catch (Exception exc)
+                        {
+                            logger.Error(ErrorCode.Runtime_Error_100326, "RunClientMessagePump has thrown exception", exc);
+                        }
                     }
                 },
                 ct).Ignore();
@@ -398,7 +409,7 @@ namespace Orleans
                 start = !objectData.Running;
                 objectData.Running = true;
             }
-            if (logger.IsVerbose) logger.Verbose("InvokeLocalObjectAsync {0} start {1}", message, start);
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("InvokeLocalObjectAsync {0} start {1}", message, start);
             if (start)
             {
                 // we use Task.Run() to ensure that the message pump operates asynchronously
@@ -622,7 +633,7 @@ namespace Orleans
             {
                 message.DebugContext = debugContext;
             }
-            if (message.IsExpirableMessage(config))
+            if (message.IsExpirableMessage(config.DropExpiredMessages))
             {
                 // don't set expiration for system target messages.
                 message.TimeToLive = responseTimeout;
@@ -636,23 +647,25 @@ namespace Orleans
                     context,
                     message,
                     unregisterCallback,
-                    config);
+                    config,
+                    this.callBackDataLogger,
+                    this.timerLogger);
                 callbacks.TryAdd(message.Id, callbackData);
                 callbackData.StartTimer(responseTimeout);
             }
 
-            if (logger.IsVerbose2) logger.Verbose2("Send {0}", message);
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("Send {0}", message);
             transport.SendMessage(message);
         }
 
         private bool TryResendMessage(Message message)
         {
-            if (!message.MayResend(config))
+            if (!message.MayResend(config.MaxResendCount))
             {
                 return false;
             }
 
-            if (logger.IsVerbose) logger.Verbose("Resend {0}", message);
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("Resend {0}", message);
 
             message.ResendCount = message.ResendCount + 1;
             message.TargetHistory = message.GetTargetHistory();
@@ -670,7 +683,7 @@ namespace Orleans
 
         public void ReceiveResponse(Message response)
         {
-            if (logger.IsVerbose2) logger.Verbose2("Received {0}", response);
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("Received {0}", response);
 
             // ignore duplicate requests
             if (response.Result == Message.ResponseTypes.Rejection && response.RejectionType == Message.RejectionTypes.DuplicateRequest)
@@ -705,7 +718,7 @@ namespace Orleans
                 {
                     logger.Info("OutsideRuntimeClient.Reset(): client Id " + clientId);
                 }
-            });
+            }, this.logger);
 
             Utils.SafeExecute(() =>
             {
@@ -784,12 +797,6 @@ namespace Orleans
             catch (Exception) { }
 
             Utils.SafeExecute(() => this.Dispose());
-
-            try
-            {
-                LogManager.UnInitialize();
-            }
-            catch (Exception) { }
         }
 
         public void SetResponseTimeout(TimeSpan timeout)
@@ -834,7 +841,6 @@ namespace Orleans
             {
                 logger.Warn(ErrorCode.ProxyClient_AppDomain_Unload,
                     String.Format("Current AppDomain={0} is unloading.", PrintAppDomainDetails()));
-                LogManager.Flush();
             }
             catch (Exception)
             {

@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Extensions.Logging;
 
 namespace Orleans.Runtime.Counters
 {
@@ -9,9 +10,10 @@ namespace Orleans.Runtime.Counters
     /// </summary>
     internal class CountersStatistics
     {
-        private static readonly Logger logger = LogManager.GetLogger("WindowsPerfCountersStatistics", LoggerType.Runtime);
-
+        private readonly ILogger logger;
+        private readonly ILoggerFactory loggerFactory;
         private const int ERROR_THRESHOLD = 10; // A totally arbitrary value!
+        private readonly ITelemetryProducer telemetryProducer;
         private SafeTimer timer;
         private bool shouldWritePerfCounters = true;
 
@@ -22,12 +24,16 @@ namespace Orleans.Runtime.Counters
         /// Initialize the counter publisher framework. Start the background stats writer thread.
         /// </summary>
         /// <param name="writeInterval">Frequency of writing to Windows perf counters</param>
-        public CountersStatistics(TimeSpan writeInterval)
+        /// <param name="telemetryProducer">The metrics writer.</param>
+		/// <param name="loggerFactory">The loggerFactory.</param>
+        public CountersStatistics(TimeSpan writeInterval, ITelemetryProducer telemetryProducer, ILoggerFactory loggerFactory)
         {
-            if (writeInterval <= TimeSpan.Zero)
-                throw new ArgumentException("Creating CounterStatsPublisher with negative or zero writeInterval", "writeInterval");
-
+            if (writeInterval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(writeInterval), "Creating CounterStatsPublisher with negative or zero writeInterval");
+            if (telemetryProducer == null) throw new ArgumentNullException(nameof(telemetryProducer));
+            this.logger = loggerFactory.CreateLogger<CounterStatistic>();
+            this.loggerFactory = loggerFactory;
             PerfCountersWriteInterval = writeInterval;
+            this.telemetryProducer = telemetryProducer;
         }
 
         /// <summary>
@@ -38,7 +44,7 @@ namespace Orleans.Runtime.Counters
             logger.Info(ErrorCode.PerfCounterStarting, "Starting Windows perf counter stats collection with frequency={0}", PerfCountersWriteInterval);
 
             // Start the timer
-            timer = new SafeTimer(TimerTick, null, PerfCountersWriteInterval, PerfCountersWriteInterval);
+            timer = new SafeTimer(this.loggerFactory.CreateLogger<SafeTimer>(), TimerTick, null, PerfCountersWriteInterval, PerfCountersWriteInterval);
         }
 
         /// <summary>
@@ -62,16 +68,16 @@ namespace Orleans.Runtime.Counters
             if (shouldWritePerfCounters)
             {
                 // Write counters to Windows perf counters
-                int numErrors = OrleansCounterManager.WriteCounters();
+                int numErrors = OrleansCounterManager.WriteCounters(this.telemetryProducer, this.logger);
 
                 if (numErrors > 0)
                 {
                     logger.Warn(ErrorCode.PerfCounterWriteErrors,
                                 "Completed writing Windows perf counters with {0} errors", numErrors);
                 }
-                else if (logger.IsVerbose2)
+                else if (logger.IsEnabled(LogLevel.Trace))
                 {
-                    logger.Verbose2(ErrorCode.PerfCounterWriteSuccess,
+                    logger.Trace(ErrorCode.PerfCounterWriteSuccess,
                                     "Completed writing Windows perf counters sucessfully");
                 }
 
@@ -82,9 +88,9 @@ namespace Orleans.Runtime.Counters
                     shouldWritePerfCounters = false;
                 }
             }
-            else if (logger.IsVerbose2)
+            else if (logger.IsEnabled(LogLevel.Trace))
             {
-                logger.Verbose2("Skipping - Writing Windows perf counters is disabled");
+                logger.Trace("Skipping - Writing Windows perf counters is disabled");
             }
         }
     }

@@ -5,9 +5,13 @@ namespace Orleans.CodeGeneration
     using System.IO;
     using System.Reflection;
     using Orleans.CodeGenerator;
+    using Orleans.Configuration;
+    using Orleans.Logging;
     using Orleans.Runtime;
     using Orleans.Serialization;
     using Orleans.Runtime.Configuration;
+    using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
 
     /// <summary>
     /// Generates factory, grain reference, and invoker classes for grain interfaces.
@@ -43,6 +47,8 @@ namespace Orleans.CodeGeneration
             1591, // CS1591 - Missing XML comment for publicly visible type or member 'Type_or_Member'
             1998 // CS1998 - This async method lacks 'await' operators and will run synchronously
         };
+        
+        private static readonly string OrleansAssemblyFileName = Path.GetFileName(typeof(RuntimeVersion).Assembly.Location);
 
         /// <summary>
         /// Generates one GrainReference class for each Grain Type in the inputLib file 
@@ -110,7 +116,7 @@ namespace Orleans.CodeGeneration
             // Load input assembly 
             // special case Orleans.dll because there is a circular dependency.
             var assemblyName = AssemblyName.GetAssemblyName(options.InputAssembly.FullName);
-            var grainAssembly = (Path.GetFileName(options.InputAssembly.FullName) != "Orleans.dll")
+            var grainAssembly = (Path.GetFileName(options.InputAssembly.FullName) != OrleansAssemblyFileName)
                                     ? Assembly.LoadFrom(options.InputAssembly.FullName)
                                     : Assembly.Load(assemblyName);
 
@@ -123,7 +129,14 @@ namespace Orleans.CodeGeneration
             }
 
             var config = new ClusterConfiguration();
-            var codeGenerator = new RoslynCodeGenerator(new SerializationManager(null, config.Globals, config.Defaults));
+            var serializationProviderOptions = Options.Create(new SerializationProviderOptions
+            {
+                SerializationProviders = config.Globals.SerializationProviders,
+                FallbackSerializationProvider = config.Globals.FallbackSerializationProvider
+            });
+            var loggerFactory = new LoggerFactory();
+            loggerFactory.AddProvider(new FileLoggerProvider("ClientGenerator.log"));
+            var codeGenerator = new RoslynCodeGenerator(new SerializationManager(null, serializationProviderOptions, config.Defaults, loggerFactory), loggerFactory);
 
             // Generate source
             ConsoleText.WriteStatus("Orleans-CodeGen - Generating file {0}", options.OutputFileName);
@@ -225,14 +238,32 @@ namespace Orleans.CodeGeneration
                 // STEP 3 : Dump useful info for debugging
                 Console.WriteLine($"Orleans-CodeGen - Options {Environment.NewLine}\tInputLib={options.InputAssembly.FullName}{Environment.NewLine}\tOutputFileName={options.OutputFileName}");
 
+                bool referencesOrleans = options.InputAssembly.Name.Equals(OrleansAssemblyFileName);
                 if (options.ReferencedAssemblies != null)
                 {
                     Console.WriteLine("Orleans-CodeGen - Using referenced libraries:");
-                    foreach (string assembly in options.ReferencedAssemblies) Console.WriteLine("\t{0} => {1}", Path.GetFileName(assembly), assembly);
+                    foreach (string assembly in options.ReferencedAssemblies)
+                    {
+                        var fileName = Path.GetFileName(assembly);
+                        Console.WriteLine("\t{0} => {1}", fileName, assembly);
+                        if (fileName != null && fileName.Equals(OrleansAssemblyFileName)) referencesOrleans = true;
+                    }
                 }
 
-                // STEP 5 : Finally call code generation
-                if (!CreateGrainClientAssembly(options)) return -1;
+                if (referencesOrleans)
+                {
+                    // STEP 5 : Finally call code generation
+                    if (!CreateGrainClientAssembly(options))
+                    {
+                        Console.WriteLine("ERROR: Orleans-CodeGen - the input assembly contained no types which required code generation.");
+                        return -1;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("ERROR: Orleans-CodeGen - the input assembly does not reference Orleans and therefore code can not be generated.");
+                    return -2;
+                }
 
                 // DONE!
                 return 0;

@@ -88,8 +88,7 @@ namespace Orleans.Runtime
                     TypeUtils.GetTypes(
                         assembly,
                         type => typeof(T).IsAssignableFrom(type) && !type.GetTypeInfo().IsInterface,
-                        logger,
-                        false).FirstOrDefault();
+                        logger).FirstOrDefault();
                 if (foundType == null)
                 {
                     return null;
@@ -114,7 +113,7 @@ namespace Orleans.Runtime
             try
             {
                 var assembly = Assembly.Load(new AssemblyName(assemblyName));
-                var foundType = TypeUtils.GetTypes(assembly, type => typeof(T).IsAssignableFrom(type), logger, false).First();
+                var foundType = TypeUtils.GetTypes(assembly, type => typeof(T).IsAssignableFrom(type), logger).First();
 
                 return (T)ActivatorUtilities.GetServiceOrCreateInstance(serviceProvider, foundType);
             }
@@ -217,12 +216,7 @@ namespace Orleans.Runtime
 
                         if (IsCompatibleWithCurrentProcess(j, out complaints))
                         {
-                            if (logger.IsVerbose) logger.Verbose("Trying to pre-load {0} to reflection-only context.", j);
-#if NETSTANDARD2_0
-                            Assembly.LoadFrom(j);
-#else
-                            Assembly.ReflectionOnlyLoadFrom(j);
-#endif
+                            TryReflectionOnlyLoadFromOrFallback(j);
                         }
                         else
                         {
@@ -243,6 +237,18 @@ namespace Orleans.Runtime
             }
 
             return assemblies;
+        }
+
+        private static Assembly TryReflectionOnlyLoadFromOrFallback(string assembly)
+        {
+            if (TypeUtils.CanUseReflectionOnly)
+            {
+                return Assembly.ReflectionOnlyLoadFrom(assembly);
+            }
+            else
+            {
+                return Assembly.LoadFrom(assembly);
+            }
         }
 
         private bool ShouldExcludeAssembly(string pathName)
@@ -349,11 +355,7 @@ namespace Orleans.Runtime
 
                 if (IsCompatibleWithCurrentProcess(pathName, out complaints))
                 {
-#if NETSTANDARD2_0
-                    assembly = Assembly.LoadFrom(pathName);
-#else
-                    assembly = Assembly.ReflectionOnlyLoadFrom(pathName);
-#endif
+                    assembly = TryReflectionOnlyLoadFromOrFallback(pathName);
                 }
                 else
                 {
