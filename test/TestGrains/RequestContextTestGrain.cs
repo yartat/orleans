@@ -40,6 +40,7 @@ namespace UnitTests.Grains
 
         public Task<Guid> E2ELegacyActivityId()
         {
+            if (!RequestContext.PropagateActivityId) throw new InvalidOperationException("ActivityId propagation is not enabled on silo.");
             return Task.FromResult(Trace.CorrelationManager.ActivityId);
         }
 
@@ -52,7 +53,7 @@ namespace UnitTests.Grains
 
         public override Task OnActivateAsync()
         {
-            logger = base.GetLogger();
+            logger = this.GetLogger();
             return Task.CompletedTask;
         }
 

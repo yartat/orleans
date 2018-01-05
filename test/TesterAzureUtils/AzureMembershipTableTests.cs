@@ -1,7 +1,11 @@
+using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Orleans;
 using Orleans.AzureUtils;
+using Orleans.AzureUtils.Configuration;
+using Orleans.AzureUtils.Options;
 using Orleans.Messaging;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
@@ -26,21 +30,30 @@ namespace Tester.AzureUtils
         private static LoggerFilterOptions CreateFilters()
         {
             var filters = new LoggerFilterOptions();
-            filters.AddFilter(typeof(AzureTableDataManager<>).FullName, LogLevel.Trace);
+            filters.AddFilter(typeof(Orleans.Clustering.AzureStorage.AzureTableDataManager<>).FullName, LogLevel.Trace);
             filters.AddFilter(typeof(OrleansSiloInstanceManager).FullName, LogLevel.Trace);
             filters.AddFilter("Orleans.Storage", LogLevel.Trace);
             return filters;
         }
 
-        protected override IMembershipTable CreateMembershipTable(Logger logger)
+        protected override IMembershipTable CreateMembershipTable(ILogger logger)
         {
             TestUtils.CheckForAzureStorage();
-            return new AzureBasedMembershipTable(loggerFactory);
+            var options = new AzureTableMembershipOptions()
+            {
+                MaxStorageBusyRetries = 3,
+                ConnectionString = this.connectionString,
+            };
+            return new AzureBasedMembershipTable(loggerFactory, Options.Create(options), this.siloOptions);
         }
 
-        protected override IGatewayListProvider CreateGatewayListProvider(Logger logger)
+        protected override IGatewayListProvider CreateGatewayListProvider(ILogger logger)
         {
-            return new AzureGatewayListProvider(loggerFactory);
+            var options = new AzureTableGatewayListProviderOptions()
+            {
+                ConnectionString = this.connectionString
+            };
+            return new AzureGatewayListProvider(loggerFactory, Options.Create(options), this.clientOptions, this.clientConfiguration);
         }
 
         protected override Task<string> GetConnectionString()

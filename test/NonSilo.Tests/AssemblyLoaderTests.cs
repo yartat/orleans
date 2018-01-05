@@ -17,13 +17,13 @@ namespace UnitTests
 
         private readonly ILoggerFactory defaultLoggerFactory;
 
-        private readonly Logger logger;
+        private readonly ILogger logger;
 
         public AssemblyLoaderTests()
         {
             this.defaultLoggerFactory =
                 TestingUtils.CreateDefaultLoggerFactory("AssemblyLoaderTests.log");
-            this.logger = new LoggerWrapper<AssemblyLoaderTests>(defaultLoggerFactory);
+            this.logger = defaultLoggerFactory.CreateLogger<AssemblyLoaderTests>();
         }
 
         public void Dispose()
@@ -107,9 +107,12 @@ namespace UnitTests
 
         private List<string> NewExclusionList()
         {
-            var exclusionList = new List<string>(AssemblyLoaderCriteria.SystemBinariesList);
-            exclusionList.Add("UnitTests.dll");
-            return exclusionList;
+            return new List<string>(new[]
+            {
+                "Orleans.Core.dll",
+                "OrleansRuntime.dll",
+                "UnitTests.dll"
+            });
         }
 
         private AssemblyLoader NewAssemblyLoader(List<string> exclusionList)

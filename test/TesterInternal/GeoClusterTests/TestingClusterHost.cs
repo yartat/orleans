@@ -146,6 +146,7 @@ namespace Tests.GeoClusterTests
                     // configure multi-cluster network
                     config.Globals.ServiceId = globalServiceId;
                     config.Globals.ClusterId = clusterId;
+                    config.Globals.HasMultiClusterNetwork = true;
                     config.Globals.MaxMultiClusterGateways = 2;
                     config.Globals.DefaultMultiCluster = null;
 
@@ -170,7 +171,7 @@ namespace Tests.GeoClusterTests
                 return new SiloHostBuilder()
                     .ConfigureSiloName(siloName)
                     .UseConfiguration(clusterConfiguration)
-                    .ConfigureLogging(builder => ConfigureLogging(builder, clusterConfiguration.GetOrCreateNodeConfigurationForSilo(siloName).TraceFileName));
+                    .ConfigureLogging(builder => ConfigureLogging(builder, TestingUtils.CreateTraceFileName(siloName, clusterConfiguration.Globals.ClusterId)));
             }
 
             private void ConfigureLogging(ILoggingBuilder builder, string filePath)
@@ -305,7 +306,10 @@ namespace Tests.GeoClusterTests
 
                 configCustomizer?.Invoke(config);
 
-                this.InternalClient = (IInternalClusterClient) new ClientBuilder().UseConfiguration(config).Build();
+                this.InternalClient = (IInternalClusterClient) new ClientBuilder()
+                    .ConfigureApplicationParts(parts => parts.AddFromAppDomain().AddFromApplicationBaseDirectory())
+                    .UseConfiguration(config)
+                    .Build();
                 this.InternalClient.Connect().Wait();
             }
 

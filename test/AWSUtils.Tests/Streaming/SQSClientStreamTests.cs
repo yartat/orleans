@@ -3,7 +3,6 @@ using Orleans.Providers.Streams;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
 using Orleans.TestingHost;
-using OrleansAWSUtils.Streams;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -12,6 +11,7 @@ using Tester.StreamingTests;
 using TestExtensions;
 using Xunit;
 using Xunit.Abstractions;
+using OrleansAWSUtils.Streams;
 
 namespace AWSUtils.Tests.Streaming
 {
@@ -37,17 +37,17 @@ namespace AWSUtils.Tests.Streaming
                 throw new SkipException("Empty connection string");
             }
 
-            var deploymentId = Guid.NewGuid().ToString();
+            var clusterId = Guid.NewGuid().ToString();
             var streamConnectionString = new Dictionary<string, string>
                 {
                     { "DataConnectionString",  StorageConnectionString},
-                    { "DeploymentId",  deploymentId}
+                    { "DeploymentId",  clusterId}
                 };
             var options = new TestClusterOptions(2);
             options.ClusterConfiguration.AddMemoryStorageProvider("PubSubStore");
 
-            options.ClusterConfiguration.Globals.DeploymentId = deploymentId;
-            options.ClientConfiguration.DeploymentId = deploymentId;
+            options.ClusterConfiguration.Globals.ClusterId = clusterId;
+            options.ClientConfiguration.ClusterId = clusterId;
             options.ClusterConfiguration.Globals.ClientDropTimeout = TimeSpan.FromSeconds(5);
             options.ClientConfiguration.DataConnectionString = StorageConnectionString;
             options.ClusterConfiguration.Globals.DataConnectionString = StorageConnectionString;
@@ -58,9 +58,9 @@ namespace AWSUtils.Tests.Streaming
 
         public override void Dispose()
         {
-            var deploymentId = HostedCluster.DeploymentId;
+            var clusterId = HostedCluster.ClusterId;
             base.Dispose();
-            SQSStreamProviderUtils.DeleteAllUsedQueues(SQSStreamProviderName, deploymentId, StorageConnectionString, NullLoggerFactory.Instance).Wait();
+            SQSStreamProviderUtils.DeleteAllUsedQueues(SQSStreamProviderName, clusterId, StorageConnectionString, NullLoggerFactory.Instance).Wait();
         }
 
         [SkippableFact, TestCategory("AWS")]

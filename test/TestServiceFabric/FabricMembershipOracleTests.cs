@@ -1,14 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Orleans.ServiceFabric;
-using Microsoft.Orleans.ServiceFabric.Models;
+using Microsoft.Extensions.Options;
+using Orleans.Clustering.ServiceFabric;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
+using Orleans.ServiceFabric;
+using TestExtensions;
 using Xunit;
 
 namespace TestServiceFabric
@@ -23,25 +24,34 @@ namespace TestServiceFabric
 
         private ITestOutputHelper Output { get; }
         private readonly FabricMembershipOracle oracle;
+        private readonly UnknownSiloMonitor unknownSiloMonitor;
+        private readonly ServiceFabricClusteringOptions fabricClusteringOptions;
+
         public FabricMembershipOracleTests(ITestOutputHelper output)
         {
             this.Output = output;
             this.siloDetails = new MockSiloDetails
             {
                 Name = Guid.NewGuid().ToString("N"),
-                SiloAddress = SiloAddress.NewLocalAddress(SiloAddress.AllocateNewGeneration())
+                SiloAddress = SiloAddressUtils.NewLocalSiloAddress(SiloAddress.AllocateNewGeneration())
             };
 
             this.resolver = new MockResolver();
             var globalConfig = new ClusterConfiguration().Globals;
+            globalConfig.HasMultiClusterNetwork = true;
             globalConfig.MaxMultiClusterGateways = 2;
             globalConfig.ClusterId = "MegaGoodCluster";
 
+            this.fabricClusteringOptions = new ServiceFabricClusteringOptions();
+            this.unknownSiloMonitor = new UnknownSiloMonitor(
+                new OptionsWrapper<ServiceFabricClusteringOptions>(this.fabricClusteringOptions),
+                new TestOutputLogger<UnknownSiloMonitor>(this.Output));
             this.oracle = new FabricMembershipOracle(
                 this.siloDetails,
                 globalConfig,
                 this.resolver,
-                new NullLogger<FabricMembershipOracle>());
+                new NullLogger<FabricMembershipOracle>(),
+                this.unknownSiloMonitor);
         }
 
         [Fact]
@@ -79,8 +89,7 @@ namespace TestServiceFabric
         {
             Assert.Equal(this.siloDetails.SiloAddress, this.oracle.SiloAddress);
             Assert.Equal(this.siloDetails.Name, this.oracle.SiloName);
-            string actualName;
-            Assert.True(this.oracle.TryGetSiloName(this.siloDetails.SiloAddress, out actualName));
+            Assert.True(this.oracle.TryGetSiloName(this.siloDetails.SiloAddress, out var actualName));
             Assert.Equal(this.siloDetails.Name, actualName);
         }
 
@@ -186,8 +195,11 @@ namespace TestServiceFabric
         private class MockSiloDetails : ILocalSiloDetails
         {
             public string Name { get; set; }
+            public string ClusterId { get; }
+            public string DnsHostName { get; }
             public SiloAddress SiloAddress { get; set; }
             public SiloAddress HostSiloAddress { get; set; }
+            public SiloAddress GatewayAddress { get; }
         }
 
         private void AssertStatus(SiloStatus expected)
@@ -223,8 +235,7 @@ namespace TestServiceFabric
 
             public void SiloStatusChangeNotification(SiloAddress updatedSilo, SiloStatus status)
             {
-                SiloStatus existingStatus;
-                if (this.Silos.TryGetValue(updatedSilo, out existingStatus))
+                if (this.Silos.TryGetValue(updatedSilo, out var existingStatus))
                 {
                     if (existingStatus == status) throw new InvalidOperationException($"Silo {updatedSilo} already has status {status}.");
                 }

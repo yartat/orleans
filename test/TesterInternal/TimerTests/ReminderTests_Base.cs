@@ -37,21 +37,21 @@ namespace UnitTests.TimerTests
         protected const long failAfter = 2; // NOTE: match this sleep with 'failCheckAfter' used in PerGrainFailureTest() so you dont try to get counter immediately after failure as new activation may not have the reminder statistics
         protected const long failCheckAfter = 6; // safe value: 9
 
-        protected Logger log;
+        protected ILogger log;
 
         public ReminderTests_Base(BaseTestClusterFixture fixture)
         {
             HostedCluster = fixture.HostedCluster;
             GrainFactory = fixture.GrainFactory;
 
-            ClientConfiguration cfg = ClientConfiguration.LoadFromFile("ClientConfigurationForTesting.xml");
+            ClientConfiguration configuration = ClientConfiguration.LoadFromFile("ClientConfigurationForTesting.xml");
             var filters = new LoggerFilterOptions();
 #if DEBUG
             filters.AddFilter("Storage", LogLevel.Trace);
             filters.AddFilter("Reminder", LogLevel.Trace);
 #endif
 
-            log = new LoggerWrapper<ReminderTests_Base>(TestingUtils.CreateDefaultLoggerFactory(cfg.TraceFileName, filters));
+            log = TestingUtils.CreateDefaultLoggerFactory(TestingUtils.CreateTraceFileName(configuration.ClientName, configuration.ClusterId), filters).CreateLogger<ReminderTests_Base>();
         }
 
         public IGrainFactory GrainFactory { get; }

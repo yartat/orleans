@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading.Tasks;
 using Orleans;
 using Orleans.Concurrency;
 using Orleans.Runtime;
 using UnitTests.GrainInterfaces;
+using Orleans.Runtime.Configuration;
 
 namespace UnitTests.Grains
 {
@@ -19,7 +21,7 @@ namespace UnitTests.Grains
             if (this.GetPrimaryKeyLong() == -2)
                 throw new ArgumentException("Primary key cannot be -2 for this test case");
 
-            logger = base.GetLogger("StressTestGrain " + base.RuntimeIdentity);
+            logger = this.GetLogger("StressTestGrain " + base.RuntimeIdentity);
             label = this.GetPrimaryKeyLong().ToString();
             logger.Info("OnActivateAsync");
 
@@ -66,7 +68,8 @@ namespace UnitTests.Grains
                 var reply = new List<Tuple<SiloAddress, ActivationId>>();
                 for (int i = 0; i < 10; i++)
                 {
-                    reply.Add(new Tuple<SiloAddress, ActivationId>(SiloAddress.NewLocalAddress(0), ActivationId.NewId()));
+                    var siloAddress = SiloAddress.New(new IPEndPoint(ClusterConfiguration.GetLocalIPAddress(),0), 0);
+                    reply.Add(new Tuple<SiloAddress, ActivationId>(siloAddress, ActivationId.NewId()));
                 }
                 list.Add(new Tuple<GrainId, int, List<Tuple<SiloAddress, ActivationId>>>(id, 3, reply));
             }
@@ -109,7 +112,7 @@ namespace UnitTests.Grains
         public override Task OnActivateAsync()
         {
             label = this.GetPrimaryKeyLong().ToString();
-            logger = base.GetLogger("ReentrantStressTestGrain " + base.Data.Address.ToString());
+            logger = this.GetLogger("ReentrantStressTestGrain " + base.Data.Address.ToString());
             logger.Info("OnActivateAsync");
             return Task.CompletedTask;
         }
@@ -264,7 +267,7 @@ namespace UnitTests.Grains
         public override Task OnActivateAsync()
         {
             label = this.GetPrimaryKeyLong().ToString();
-            logger = base.GetLogger("ReentrantLocalStressTestGrain " + base.Data.Address.ToString());
+            logger = this.GetLogger("ReentrantLocalStressTestGrain " + base.Data.Address.ToString());
             logger.Info("OnActivateAsync");
             return Task.CompletedTask;
         }

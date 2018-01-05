@@ -1,13 +1,19 @@
+using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Orleans;
 using Orleans.Messaging;
 using Orleans.Runtime;
+using Orleans.Runtime.Membership;
 using Orleans.Runtime.MembershipService;
-using Orleans.SqlUtils;
+using Orleans.Tests.SqlUtils;
+using OrleansSQLUtils.Configuration;
 using TestExtensions;
 using UnitTests.General;
 using Xunit;
+using OrleansSQLUtils;
+using OrleansSQLUtils.Options;
 
 namespace UnitTests.MembershipTests
 {
@@ -27,14 +33,24 @@ namespace UnitTests.MembershipTests
             filters.AddFilter(typeof(SqlServerMembershipTableTests).Name, LogLevel.Trace);
             return filters;
         }
-        protected override IMembershipTable CreateMembershipTable(Logger logger)
+        protected override IMembershipTable CreateMembershipTable(ILogger logger)
         {
-            return new SqlMembershipTable(this.GrainReferenceConverter, this.loggerFactory.CreateLogger<SqlMembershipTable>());
+            var options = new SqlMembershipOptions()
+            {
+                AdoInvariant = GetAdoInvariant(),
+                ConnectionString = this.connectionString,
+            };
+            return new SqlMembershipTable(this.GrainReferenceConverter, this.siloOptions, Options.Create(options),  this.loggerFactory.CreateLogger<SqlMembershipTable>());
         }
 
-        protected override IGatewayListProvider CreateGatewayListProvider(Logger logger)
+        protected override IGatewayListProvider CreateGatewayListProvider(ILogger logger)
         {
-            return new SqlMembershipTable(this.GrainReferenceConverter, this.loggerFactory.CreateLogger<SqlMembershipTable>());
+            var options = new SqlGatewayListProviderOptions()
+            {
+                ConnectionString = this.connectionString,
+                AdoInvariant = GetAdoInvariant()
+            };
+            return new SqlGatewayListProvider(this.loggerFactory.CreateLogger<SqlGatewayListProvider>(), this.GrainReferenceConverter, this.clientConfiguration, Options.Create(options), this.clientOptions);
         }
 
         protected override string GetAdoInvariant()

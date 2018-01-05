@@ -1,7 +1,9 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Orleans;
 using Orleans.Configuration;
 using Orleans.Providers;
 using Orleans.Runtime;
@@ -12,6 +14,7 @@ using UnitTests.GrainInterfaces;
 using UnitTests.Grains;
 using Xunit;
 using Orleans.Hosting;
+using Orleans.Serialization;
 using Orleans.TestingHost.Utils;
 
 namespace UnitTests.General
@@ -42,7 +45,7 @@ namespace UnitTests.General
                         .ConfigureSiloName(siloName)
                         .UseConfiguration(clusterConfiguration)
                         .ConfigureServices(ConfigureServices)
-                        .ConfigureLogging(builder => TestingUtils.ConfigureDefaultLoggingBuilder(builder, clusterConfiguration.GetOrCreateNodeConfigurationForSilo(siloName).TraceFileName));
+                        .ConfigureLogging(builder => TestingUtils.ConfigureDefaultLoggingBuilder(builder, TestingUtils.CreateTraceFileName(siloName, clusterConfiguration.Globals.ClusterId)));
                 }
             }
             
@@ -61,16 +64,35 @@ namespace UnitTests.General
                     return context.Invoke();
                 });
 
-                services.AddGrainCallFilter(context =>
-                {
-                    if (string.Equals(context.Method.Name, nameof(IGrainCallFilterTestGrain.GetRequestContext)))
-                    {
-                        var value = RequestContext.Get(Key) as string;
-                        if (value != null) RequestContext.Set(Key, value + '2');
-                    }
+                services.AddGrainCallFilter<GrainCallFilterWithDependencies>();
+            }
+        }
 
-                    return context.Invoke();
-                });
+        [SuppressMessage("ReSharper", "NotAccessedField.Local")]
+        public class GrainCallFilterWithDependencies : IGrainCallFilter
+        {
+            private readonly SerializationManager serializationManager;
+            private readonly Silo silo;
+            private readonly IGrainFactory grainFactory;
+
+            public GrainCallFilterWithDependencies(SerializationManager serializationManager, Silo silo, IGrainFactory grainFactory)
+            {
+                this.serializationManager = serializationManager;
+                this.silo = silo;
+                this.grainFactory = grainFactory;
+            }
+
+            public Task Invoke(IGrainCallContext context)
+            {
+                if (string.Equals(context.Method.Name, nameof(IGrainCallFilterTestGrain.GetRequestContext)))
+                {
+                    if (RequestContext.Get(GrainCallFilterTestConstants.Key) is string value)
+                    {
+                        RequestContext.Set(GrainCallFilterTestConstants.Key, value + '2');
+                    }
+                }
+
+                return context.Invoke();
             }
         }
 
@@ -93,7 +115,7 @@ namespace UnitTests.General
             // This grain method reads the context and returns it
             var context = await grain.GetRequestContext();
             Assert.NotNull(context);
-            Assert.Equal("123456", context);
+            Assert.Equal("1234", context);
         }
         
         /// <summary>
@@ -245,17 +267,6 @@ namespace UnitTests.General
         public Task Init(string name, IProviderRuntime providerRuntime, IProviderConfiguration config)
         {
 #pragma warning disable 618
-            providerRuntime.SetInvokeInterceptor((method, request, grain, invoker) =>
-#pragma warning restore 618
-            {
-                if (string.Equals(method.Name, nameof(IGrainCallFilterTestGrain.GetRequestContext)))
-                {
-                    var value = RequestContext.Get(GrainCallFilterTestConstants.Key) as string;
-                    if (value != null) RequestContext.Set(GrainCallFilterTestConstants.Key, value + '3');
-                }
-
-                return invoker.Invoke(grain, request);
-            });
 
             return Task.FromResult(0);
         }

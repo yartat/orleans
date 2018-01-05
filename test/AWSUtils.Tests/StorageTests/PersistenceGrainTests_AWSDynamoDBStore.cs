@@ -1,6 +1,7 @@
 ﻿using Orleans;
 using Orleans.Providers;
 using Orleans.Runtime.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Orleans.Storage;
 using Orleans.TestingHost;
 using System;
@@ -18,6 +19,7 @@ namespace AWSUtils.Tests.StorageTests
     [TestCategory("Persistence"), TestCategory("AWS"), TestCategory("DynamoDb")]
     public class PersistenceGrainTests_AWSDynamoDBStore : Base_PersistenceGrainTests_AWSStore, IClassFixture<PersistenceGrainTests_AWSDynamoDBStore.Fixture>
     {
+        private static string DataConnectionString = $"Service={AWSTestConstants.Service}";
         public class Fixture : TestExtensions.BaseTestClusterFixture
         {
             protected override TestCluster CreateTestCluster()
@@ -25,7 +27,7 @@ namespace AWSUtils.Tests.StorageTests
                 if (AWSTestConstants.IsDynamoDbAvailable)
                 {
                     Guid serviceId = Guid.NewGuid();
-                    string dataConnectionString = $"Service={AWSTestConstants.Service}";
+                    string dataConnectionString = DataConnectionString;
                     var options = new TestClusterOptions(initialSilosCount: 4);
 
 
@@ -41,11 +43,11 @@ namespace AWSUtils.Tests.StorageTests
                     options.ClusterConfiguration.Globals.RegisterStorageProvider<UnitTests.StorageTests.MockStorageProvider>("lowercase");
 
                     options.ClusterConfiguration.AddMemoryStorageProvider("MemoryStore");
-                    options.ClusterConfiguration.Globals.RegisterStorageProvider<Orleans.Storage.DynamoDBStorageProvider>("DDBStore", new Dictionary<string, string> { { "DeleteStateOnClear", "true" }, { "DataConnectionString", dataConnectionString } });
-                    options.ClusterConfiguration.Globals.RegisterStorageProvider<Orleans.Storage.DynamoDBStorageProvider>("DDBStore1", new Dictionary<string, string> { { "DataConnectionString", dataConnectionString } });
-                    options.ClusterConfiguration.Globals.RegisterStorageProvider<Orleans.Storage.DynamoDBStorageProvider>("DDBStore2", new Dictionary<string, string> { { "DataConnectionString", dataConnectionString } });
-                    options.ClusterConfiguration.Globals.RegisterStorageProvider<Orleans.Storage.DynamoDBStorageProvider>("DDBStore3", new Dictionary<string, string> { { "DataConnectionString", dataConnectionString } });
-                    options.ClusterConfiguration.Globals.RegisterStorageProvider<Orleans.Storage.ShardedStorageProvider>("ShardedDDBStore");
+                    options.ClusterConfiguration.Globals.RegisterStorageProvider<DynamoDBStorageProvider>("DDBStore", new Dictionary<string, string> { { "DeleteStateOnClear", "true" }, { "DataConnectionString", dataConnectionString } });
+                    options.ClusterConfiguration.Globals.RegisterStorageProvider<DynamoDBStorageProvider>("DDBStore1", new Dictionary<string, string> { { "DataConnectionString", dataConnectionString } });
+                    options.ClusterConfiguration.Globals.RegisterStorageProvider<DynamoDBStorageProvider>("DDBStore2", new Dictionary<string, string> { { "DataConnectionString", dataConnectionString } });
+                    options.ClusterConfiguration.Globals.RegisterStorageProvider<DynamoDBStorageProvider>("DDBStore3", new Dictionary<string, string> { { "DataConnectionString", dataConnectionString } });
+                    options.ClusterConfiguration.Globals.RegisterStorageProvider<ShardedStorageProvider>("ShardedDDBStore");
 
                     IProviderConfiguration providerConfig;
                     if (options.ClusterConfiguration.Globals.TryGetProviderConfiguration("Orleans.Storage.ShardedStorageProvider", "ShardedDDBStore", out providerConfig))
@@ -162,7 +164,7 @@ namespace AWSUtils.Tests.StorageTests
         }
 
         [SkippableFact, TestCategory("Functional")]
-        public void AWSDynamoDBStore_ConvertToFromStorageFormat_GrainReference()
+        public async Task AWSDynamoDBStore_ConvertToFromStorageFormat_GrainReference()
         {
             // NOTE: This test requires Silo to be running & Client init so that grain references can be resolved before serialization.
             Guid id = Guid.NewGuid();
@@ -170,8 +172,8 @@ namespace AWSUtils.Tests.StorageTests
 
             var initialState = new GrainStateContainingGrainReferences { Grain = grain };
             var entity = new GrainStateRecord();
-            var storage = new DynamoDBStorageProvider();
-            storage.InitLogger(this.HostedCluster.Client.Logger);
+            var storage = await InitDynamoDBTableStorageProvider(
+                this.HostedCluster.ServiceProvider.GetRequiredService<IProviderRuntime>(), "TestTable");
             storage.ConvertToStorageFormat(initialState, entity);
             var convertedState = new GrainStateContainingGrainReferences();
             convertedState = (GrainStateContainingGrainReferences)storage.ConvertFromStorageFormat(entity);
@@ -180,7 +182,7 @@ namespace AWSUtils.Tests.StorageTests
         }
 
         [SkippableFact, TestCategory("Functional")]
-        public void AWSDynamoDBStore_ConvertToFromStorageFormat_GrainReference_List()
+        public async Task AWSDynamoDBStore_ConvertToFromStorageFormat_GrainReference_List()
         {
             // NOTE: This test requires Silo to be running & Client init so that grain references can be resolved before serialization.
             Guid[] ids = { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
@@ -196,8 +198,9 @@ namespace AWSUtils.Tests.StorageTests
                 initialState.GrainDict.Add(g.GetPrimaryKey().ToString(), g);
             }
             var entity = new GrainStateRecord();
-            var storage = new DynamoDBStorageProvider();
-            storage.InitLogger(this.HostedCluster.Client.Logger);
+            var storage =
+                await InitDynamoDBTableStorageProvider(
+                    this.HostedCluster.ServiceProvider.GetRequiredService<IProviderRuntime>(), "TestTable");
             storage.ConvertToStorageFormat(initialState, entity);
             var convertedState = (GrainStateContainingGrainReferences)storage.ConvertFromStorageFormat(entity);
             Assert.NotNull(convertedState);
@@ -210,6 +213,16 @@ namespace AWSUtils.Tests.StorageTests
                 Assert.Equal(initialState.GrainDict[iStr], convertedState.GrainDict[iStr]);  // "GrainDict #{0}", i
             }
             Assert.Equal(initialState.Grain, convertedState.Grain);  // "Grain"
+        }
+
+        private async Task<DynamoDBStorageProvider> InitDynamoDBTableStorageProvider(IProviderRuntime runtime, string storageName)
+        {
+            Dictionary<string, string> providerCfgProps = new Dictionary<string, string>();
+            var store = new DynamoDBStorageProvider();
+            providerCfgProps["DataConnectionString"] = DataConnectionString;
+            var cfg = new ProviderConfiguration(providerCfgProps, null);
+            await store.Init(storageName, runtime, cfg);
+            return store;
         }
     }
 }

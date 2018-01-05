@@ -11,6 +11,7 @@ using TestExtensions;
 using UnitTests.MembershipTests;
 using Xunit;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Orleans.TestingHost.Utils;
 
 namespace UnitTests.RemindersTest
@@ -23,24 +24,25 @@ namespace UnitTests.RemindersTest
 
         private readonly IReminderTable remindersTable;
         protected ILoggerFactory loggerFactory;
+        protected IOptions<SiloOptions> siloOptions;
         protected const string testDatabaseName = "OrleansReminderTest";//for relational storage
         
         protected ReminderTableTestsBase(ConnectionStringFixture fixture, TestEnvironmentFixture clusterFixture, LoggerFilterOptions filters)
         {
-            loggerFactory = TestingUtils.CreateDefaultLoggerFactory(new NodeConfiguration().TraceFileName, filters);
+            loggerFactory = TestingUtils.CreateDefaultLoggerFactory($"{this.GetType()}.log", filters);
             this.ClusterFixture = clusterFixture;
             logger = loggerFactory.CreateLogger<ReminderTableTestsBase>();
             var serviceId = Guid.NewGuid();
-            var deploymentId = "test-" + serviceId;
+            var clusterId = "test-" + serviceId;
 
-            logger.Info("DeploymentId={0}", deploymentId);
-
+            logger.Info("ClusterId={0}", clusterId);
+            siloOptions = Options.Create(new SiloOptions { ClusterId = clusterId, ServiceId = serviceId });
             fixture.InitializeConnectionStringAccessor(GetConnectionString);
 
             var globalConfiguration = new GlobalConfiguration
             {
                 ServiceId = serviceId,
-                DeploymentId = deploymentId,
+                ClusterId = clusterId,
                 AdoInvariantForReminders = GetAdoInvariant(),
                 DataConnectionStringForReminders = fixture.ConnectionString
             };

@@ -10,7 +10,6 @@ using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
 using Orleans.Runtime.Storage;
 using Orleans.Storage;
-using Orleans.TestingHost.Utils;
 using Samples.StorageProviders;
 using TestExtensions;
 using UnitTests.StorageTests;
@@ -37,7 +36,7 @@ namespace Tester.AzureUtils.Persistence
                 fixture.GrainFactory,
                 fixture.Services,
                 new ClientProviderRuntime(fixture.InternalGrainFactory, fixture.Services, NullLoggerFactory.Instance),
-                new LoadedProviderTypeLoaders(new LoggerWrapper<LoadedProviderTypeLoaders>(NullLoggerFactory.Instance)),
+                new LoadedProviderTypeLoaders(new NullLogger<LoadedProviderTypeLoaders>()),
                 NullLoggerFactory.Instance);
             storageProviderManager.LoadEmptyStorageProviders().WaitWithThrow(TestConstants.InitTimeout);
             providerCfgProps.Clear();
@@ -240,9 +239,6 @@ namespace Tester.AzureUtils.Persistence
             var storage = await InitAzureTableStorageProvider(useJson, testName);
             var initialState = state.State;
 
-            var logger = new LoggerWrapper<PersistenceProviderTests_Local>(TestingUtils.CreateDefaultLoggerFactory($"{this.GetType().Name}.log"));
-            storage.InitLogger(logger);
-
             var entity = new DynamicTableEntity();
 
             storage.ConvertToStorageFormat(initialState, entity);
@@ -318,7 +314,7 @@ namespace Tester.AzureUtils.Persistence
         public void LoadClassByName()
         {
             string className = typeof(MockStorageProvider).FullName;
-            Type classType = TypeUtils.ResolveType(className);
+            Type classType = new CachedTypeResolver().ResolveType(className);
             Assert.NotNull(classType); // Type
             Assert.True(typeof(IStorageProvider).IsAssignableFrom(classType), $"Is an IStorageProvider : {classType.FullName}");
         }

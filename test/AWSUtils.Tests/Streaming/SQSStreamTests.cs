@@ -5,12 +5,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Orleans.Providers.Streams;
 using Orleans.Storage;
 using Orleans.TestingHost;
-using OrleansAWSUtils.Streams;
 using UnitTests.StreamingTests;
 using Xunit;
 using Orleans.Runtime.Configuration;
 using TestExtensions;
 using UnitTests.Streaming;
+using OrleansAWSUtils.Streams;
 
 namespace AWSUtils.Tests.Streaming
 {
@@ -74,9 +74,9 @@ namespace AWSUtils.Tests.Streaming
 
         public override void Dispose()
         {
-            var deploymentId = HostedCluster.DeploymentId;
+            var clusterId = HostedCluster.ClusterId;
             base.Dispose();
-            SQSStreamProviderUtils.DeleteAllUsedQueues(SQS_STREAM_PROVIDER_NAME, deploymentId, AWSTestConstants.DefaultSQSConnectionString, NullLoggerFactory.Instance).Wait();
+            SQSStreamProviderUtils.DeleteAllUsedQueues(SQS_STREAM_PROVIDER_NAME, clusterId, AWSTestConstants.DefaultSQSConnectionString, NullLoggerFactory.Instance).Wait();
         }
 
         ////------------------------ One to One ----------------------//

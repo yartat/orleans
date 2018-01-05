@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Runtime;
 using Orleans.Runtime.ReminderService;
-using Orleans.SqlUtils;
+using Orleans.Tests.SqlUtils;
 using TestExtensions;
 using UnitTests.General;
 using Xunit;
@@ -30,7 +30,7 @@ namespace UnitTests.RemindersTest
 
         protected override IReminderTable CreateRemindersTable()
         {
-            return new SqlReminderTable(this.ClusterFixture.Services.GetRequiredService<IGrainReferenceConverter>());
+            return new SqlReminderTable(this.ClusterFixture.Services.GetRequiredService<IGrainReferenceConverter>(), this.siloOptions);
         }
 
         protected override string GetAdoInvariant()

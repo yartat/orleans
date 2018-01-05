@@ -2,9 +2,11 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Orleans.Runtime;
 using Orleans.Providers;
 using Orleans.Transactions.Abstractions;
+using Orleans.Transactions;
 
 namespace Orleans.Transactions.Tests
 {
@@ -15,8 +17,7 @@ namespace Orleans.Transactions.Tests
         public override Task OnActivateAsync()
         {
             var resultGrain = this.GrainFactory.GetGrain<ITransactionOrchestrationResultGrain>(this.GetPrimaryKey());
-            Logger logger = this.GetLogger(nameof(TransactionOrchestrationGrain));
-            return this.resource.BindAsync(this, logger, this.ServiceProvider, resultGrain);
+            return this.resource.BindAsync(this, this.ServiceProvider, resultGrain);
         }
 
         public Task Set(int newValue)
@@ -53,7 +54,7 @@ namespace Orleans.Transactions.Tests
             private ITransactionOrchestrationResultGrain resultGrain;
             private Grain grain;
 
-            private Logger logger;
+            private ILogger logger;
             private ITransactionalResource transactionalResource;
 
             private readonly List<long> transactions= new List<long>();
@@ -85,7 +86,7 @@ namespace Orleans.Transactions.Tests
 
             public void JoinTransaction()
             {
-                TransactionInfo info = TransactionContext.GetTransactionInfo();
+                TransactionInfo info = TransactionContext.GetRequiredTransactionInfo<TransactionInfo>();
                 logger.Info($"Grain {grain} is joining transaction {info.TransactionId}.");
 
                 // are we already part of the transaction?
@@ -97,12 +98,12 @@ namespace Orleans.Transactions.Tests
                 TransactionalResourceVersion readVersion;
                 if (!TryGetVersion(info.TransactionId, out readVersion))
                 {
-                    throw new OrleansTransactionVersionDeletedException(info.TransactionId);
+                    throw new OrleansTransactionVersionDeletedException(info.TransactionId.ToString());
                 }
 
                 if (info.IsReadOnly && readVersion.TransactionId > this.stableVersion)
                 {
-                    throw new OrleansTransactionUnstableVersionException(info.TransactionId);
+                    throw new OrleansTransactionUnstableVersionException(info.TransactionId.ToString());
                 }
 
                 info.RecordRead(transactionalResource, readVersion, this.stableVersion);
@@ -111,7 +112,7 @@ namespace Orleans.Transactions.Tests
 
                 if (this.version.TransactionId > info.TransactionId || this.writeLowerBound >= info.TransactionId)
                 {
-                    throw new OrleansTransactionWaitDieException(info.TransactionId);
+                    throw new OrleansTransactionWaitDieException(info.TransactionId.ToString());
                 }
 
                 TransactionalResourceVersion nextVersion = TransactionalResourceVersion.Create(info.TransactionId,
@@ -124,11 +125,11 @@ namespace Orleans.Transactions.Tests
                 this.transactions.Remove(info.TransactionId);
             }
 
-            public async Task BindAsync(Grain containerGrain, Logger logger, IServiceProvider services, ITransactionOrchestrationResultGrain resultGrain)
+            public async Task BindAsync(Grain containerGrain, IServiceProvider services, ITransactionOrchestrationResultGrain resultGrain)
             {
                 this.grain = containerGrain;
                 this.resultGrain = resultGrain;
-                this.logger = logger.GetSubLogger(nameof(TransactionalResource));
+                this.logger = services.GetService<ILogger<TransactionalResource>>();
 
                 // bind extension to grain
                 IProviderRuntime runtime = services.GetRequiredService<IProviderRuntime>();

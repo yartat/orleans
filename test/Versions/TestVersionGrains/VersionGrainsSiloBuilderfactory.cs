@@ -1,11 +1,12 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Orleans.Runtime;
+using Orleans;
 using Orleans.Runtime.Placement;
 using UnitTests.GrainInterfaces;
 using Orleans.Hosting;
 using Orleans.TestingHost;
 using Orleans.Runtime.Configuration;
 using Orleans.TestingHost.Utils;
+using UnitTests.Grains;
 
 namespace TestVersionGrains
 {
@@ -16,8 +17,9 @@ namespace TestVersionGrains
             return new SiloHostBuilder()
                 .ConfigureSiloName(siloName)
                 .UseConfiguration(clusterConfiguration)
-                .ConfigureServices(ConfigureServices)
-                .ConfigureLogging(builder => TestingUtils.ConfigureDefaultLoggingBuilder(builder, clusterConfiguration.GetOrCreateNodeConfigurationForSilo(siloName).TraceFileName));
+                .ConfigureServices(this.ConfigureServices)
+                .ConfigureApplicationParts(parts => parts.AddFromAppDomain().AddFromApplicationBaseDirectory())
+                .ConfigureLogging(builder => TestingUtils.ConfigureDefaultLoggingBuilder(builder, TestingUtils.CreateTraceFileName(siloName, clusterConfiguration.Globals.ClusterId)));
         }
 
         private void ConfigureServices(IServiceCollection services)
