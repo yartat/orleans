@@ -906,7 +906,7 @@ namespace Orleans.Runtime
             {
                 if (!this.SystemStatus.Equals(SystemStatus.Running)) return;
                     
-                this.SystemStatus = SystemStatus.Stopping;
+                //this.SystemStatus = SystemStatus.Stopping;
             }
                 
             logger.Info(ErrorCode.SiloStopping, "Silo.HandleProcessExit() - starting to FastKill()");
