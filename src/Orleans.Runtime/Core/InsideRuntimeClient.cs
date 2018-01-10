@@ -782,9 +782,6 @@ namespace Orleans.Runtime
         {
             var currentActivation = GetCurrentActivationData();
             var invoker = TryGetExtensionInvoker(this.typeManager, handler.GetType());
-            if (invoker == null)
-                throw new InvalidOperationException("Extension method invoker was not generated for an extension interface");
-
             return currentActivation.TryAddExtension(invoker, handler);
         }
 

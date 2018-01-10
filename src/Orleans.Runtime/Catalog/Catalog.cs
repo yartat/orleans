@@ -739,8 +739,6 @@ namespace Orleans.Runtime
         private void InstallStreamConsumerExtension(ActivationData result, Dictionary<Type, IStreamSubscriptionObserverProxy> observerProxyMap)
         {
             var invoker = InsideRuntimeClient.TryGetExtensionInvoker(this.GrainTypeManager, typeof(IStreamConsumerExtension));
-            if (invoker == null)
-                throw new InvalidOperationException("Extension method invoker was not generated for an extension interface");
             var subscriptionChangeHandler = new StreamSubscriptionChangeHandler(this.providerManager, observerProxyMap);
             var handler = new StreamConsumerExtension(this.providerRuntime, subscriptionChangeHandler);
             result.TryAddExtension(invoker, handler);

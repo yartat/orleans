@@ -162,14 +162,14 @@ namespace Orleans.AzureUtils
                 (e1, e2) =>
                 {
                     if (e1 == null) return (e2 == null) ? 0 : -1;
-                    if (e2 == null) return (e1 == null) ? 0 : 1;
+                    if (e2 == null) return 1;
                     if (e1.SiloName == null) return (e2.SiloName == null) ? 0 : -1;
-                    if (e2.SiloName == null) return (e1.SiloName == null) ? 0 : 1;
-                    return String.CompareOrdinal(e1.SiloName, e2.SiloName);
+                    if (e2.SiloName == null) return 1;
+                    return string.CompareOrdinal(e1.SiloName, e2.SiloName);
                 });
-            foreach (SiloInstanceTableEntry entry in entries)
+            foreach (var entry in entries)
             {
-                sb.AppendLine(String.Format("[IP {0}:{1}:{2}, {3}, Instance={4}, Status={5}]", entry.Address, entry.Port, entry.Generation,
+                sb.AppendLine(string.Format("[IP {0}:{1}:{2}, {3}, Instance={4}, Status={5}]", entry.Address, entry.Port, entry.Generation,
                     entry.HostName, entry.SiloName, entry.Status));
             }
             return sb.ToString();

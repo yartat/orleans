@@ -379,7 +379,6 @@ namespace Orleans.Runtime.Configuration
             TypeInfo providerTypeInfo = typeof(T).GetTypeInfo();
             if (providerTypeInfo.IsAbstract ||
                 providerTypeInfo.IsGenericType ||
-                providerTypeInfo.IsGenericType ||
                 !(
                 typeof(IStatisticsPublisher).IsAssignableFrom(typeof(T)) &&
                 typeof(IClientMetricsDataPublisher).IsAssignableFrom(typeof(T))

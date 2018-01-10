@@ -103,7 +103,7 @@ namespace Orleans.Streams
         {
             return Namespace == null ? 
                 Guid.ToString() : 
-                String.Format("{0}{1}-{2}", Namespace != null ? (String.Format("{0}-", Namespace)) : "", Guid, ProviderName);
+                string.Format("{0}{1}-{2}", string.Format("{0}-", Namespace), Guid, ProviderName);
         }
 
         #region ISerializable Members

@@ -69,8 +69,6 @@ namespace Orleans.Runtime.Configuration
             {
                 found = true;
                 var config = GrainTypeConfiguration.Load((XmlElement)node);
-                if (null == config) continue;
-
                 if (config.AreDefaults)
                 {
                     defaults = config;

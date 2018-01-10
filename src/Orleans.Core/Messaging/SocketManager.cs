@@ -147,7 +147,7 @@ namespace Orleans.Runtime
             }
             catch (Exception ex)
             {
-                t?.Item3.logger.Error(ErrorCode.Messaging_Socket_ReceiveError, $"ReceiveCallback: {t?.Item2}", ex);
+                t?.Item3.logger.Error(ErrorCode.Messaging_Socket_ReceiveError, $"ReceiveCallback: {t.Item2}", ex);
             }
             finally
             {

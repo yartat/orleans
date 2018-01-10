@@ -49,7 +49,7 @@ namespace UnitTests.MessageCenterTests
             IDisposable client = null;
             try
             {
-                new ClientBuilder().UseConfiguration(cfg).Build();
+                client = new ClientBuilder().UseConfiguration(cfg).Build();
             }
             catch (Exception exc)
             {

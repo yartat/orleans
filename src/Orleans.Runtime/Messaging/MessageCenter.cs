@@ -61,7 +61,7 @@ namespace Orleans.Runtime.Messaging
             this.serializationManager = serializationManager;
             this.messageFactory = messageFactory;
             this.executorService = executorService;
-            this.Initialize(siloDetails.SiloAddress.Endpoint, siloDetails.HostSiloAddress.Endpoint, siloDetails.SiloAddress.Generation, messagingOptions, networkingOptions, metrics);
+            this.Initialize(siloDetails.SiloAddress.Endpoint, siloDetails.HostSiloAddress?.Endpoint, siloDetails.SiloAddress.Generation, messagingOptions, networkingOptions, metrics);
             if (siloDetails.GatewayAddress != null)
             {
                 Gateway = gatewayFactory(this);

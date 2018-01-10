@@ -95,14 +95,8 @@ namespace Orleans.Runtime.Messaging
             }
             else
             {
-                if (stopped)
-                {
-                    logger.Info(ErrorCode.Runtime_Error_100115, "Message was queued for sending after outbound queue was stopped: {0}", msg);
-                    return;
-                }
-
                 // check for simulation of lost messages
-                if(messageCenter?.ShouldDrop?.Invoke(msg) == true)
+                if(messageCenter.ShouldDrop?.Invoke(msg) == true)
                 {
                     logger.Info(ErrorCode.Messaging_SimulatedMessageLoss, "Message blocked by test");
                     messageCenter.SendRejection(msg, Message.RejectionTypes.Unrecoverable, "Message blocked by test");

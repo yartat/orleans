@@ -136,7 +136,7 @@ namespace Orleans.Transactions
         {
             if (currentLogMode != expectedLogMode)
             {
-                new InvalidOperationException($"Log has to be in {expectedLogMode} mode, but it is in {currentLogMode} mode.");
+                throw new InvalidOperationException($"Log has to be in {expectedLogMode} mode, but it is in {currentLogMode} mode.");
             }
         }
 

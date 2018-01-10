@@ -19,13 +19,13 @@ namespace Orleans.Storage
         public static bool IsContainerNotFound(this StorageException storageException)
         {
             return storageException?.RequestInformation?.HttpStatusCode == (int)HttpStatusCode.NotFound
-                && storageException.RequestInformation.ExtendedErrorInformation.ErrorCode == BlobErrorCodeStrings.ContainerNotFound;
+                && storageException.RequestInformation.ExtendedErrorInformation?.ErrorCode == BlobErrorCodeStrings.ContainerNotFound;
         }
 
         public static bool IsBlobNotFound(this StorageException storageException)
         {
             return storageException?.RequestInformation?.HttpStatusCode == (int)HttpStatusCode.NotFound
-                && storageException.RequestInformation.ExtendedErrorInformation.ErrorCode == BlobErrorCodeStrings.BlobNotFound;
+                && storageException.RequestInformation.ExtendedErrorInformation?.ErrorCode == BlobErrorCodeStrings.BlobNotFound;
         }
     }
 }

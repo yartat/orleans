@@ -136,7 +136,7 @@ namespace Orleans.Storage
                 // else we have an etag mismatch
                 if (logger.IsEnabled(LogLevel.Warning))
                 {
-                    logger.Warn(0, $"Etag mismatch during {operation} for grain {grainStoreKey}: Expected = {currentETag ?? "null"} Received = {receivedEtag}");
+                    logger.Warn(0, $"Etag mismatch during {operation} for grain {grainStoreKey}: Expected = {currentETag} Received = {receivedEtag}");
                 }
                 throw new MemoryStorageEtagMismatchException(currentETag, receivedEtag);
             }
