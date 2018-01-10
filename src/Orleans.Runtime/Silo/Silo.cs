@@ -160,7 +160,7 @@ namespace Orleans.Runtime
 
             var localEndpoint = this.siloDetails.SiloAddress.Endpoint;
 
-            services.GetService<SerializationManager>().RegisterSerializers(services.GetService<ApplicationPartManager>());
+            services.GetService<SerializationManager>().RegisterSerializers(services.GetService<IApplicationPartManager>());
 
             this.Services = services;
             this.Services.InitializeSiloUnobservedExceptionsHandler();
