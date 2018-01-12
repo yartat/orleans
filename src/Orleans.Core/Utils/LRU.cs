@@ -134,10 +134,11 @@ namespace Orleans.Runtime
                 if (age > requiredFreshness)
                 {
                     if (!cache.TryRemove(key, out result)) return false;
-                    if (RaiseFlushEvent == null) return false;
+                    var eventHandler = RaiseFlushEvent;
+                    if (eventHandler == null) return false;
                     
                     var args = new FlushEventArgs(key, result.Value);
-                    RaiseFlushEvent(this, args);
+                    eventHandler(this, args);
                     return false;
                 }
                 value = result.Value;
@@ -174,10 +175,11 @@ namespace Orleans.Runtime
                 TKey keyToFree = entryToFree.Key;
                 TimestampedValue old;
                 if (!cache.TryRemove(keyToFree, out old)) continue;
-                if (RaiseFlushEvent == null) continue;
+                var eventHandler = RaiseFlushEvent;
+                if (eventHandler == null) continue;
                 
                 var args = new FlushEventArgs(keyToFree, old.Value);
-                RaiseFlushEvent(this, args);
+                eventHandler(this, args);
             }
         }
 

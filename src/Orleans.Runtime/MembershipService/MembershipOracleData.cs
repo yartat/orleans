@@ -354,13 +354,17 @@ namespace Orleans.Runtime.MembershipService
               
             // pick round-robin from groups
             var  result = new List<T>();
-            for (int i = 0; result.Count < count; i++)
+            if (keys.Count > 0)
             {
-                var list = groups[keys[i % keys.Count]];
-                var col = i / keys.Count;
-                if (col < list.Count)
-                    result.Add(list[col]); 
+                for (int i = 0; result.Count < count; i++)
+                {
+                    var list = groups[keys[i % keys.Count]];
+                    var col = i / keys.Count;
+                    if (col < list.Count)
+                        result.Add(list[col]);
+                }
             }
+
             return result;
         }
 

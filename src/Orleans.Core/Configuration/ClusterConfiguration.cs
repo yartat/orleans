@@ -241,7 +241,7 @@ namespace Orleans.Runtime.Configuration
             primaryNode = primary;
             foreach (NodeConfiguration node in Overrides.Values)
             {
-                if (node.Endpoint.Equals(primary))
+                if ((node.HostEndpoint?.Equals(primary) ?? false) || node.Endpoint.Equals(primary))
                 {
                     node.IsPrimaryNode = true;
                 }

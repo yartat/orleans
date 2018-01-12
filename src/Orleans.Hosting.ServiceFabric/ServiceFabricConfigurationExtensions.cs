@@ -34,7 +34,7 @@ namespace Orleans.Hosting
             }
 
             configuration.Port = siloEndpoint.Port;
-            configuration.ProxyGatewayEndpoint = new IPEndPoint(configuration.Endpoint.Address, gatewayEndpoint.Port);
+            configuration.ProxyGatewayEndpoint = new IPEndPoint(configuration.HostEndpoint?.Address ?? configuration.Endpoint.Address, gatewayEndpoint.Port);
 
             return configuration;
         }

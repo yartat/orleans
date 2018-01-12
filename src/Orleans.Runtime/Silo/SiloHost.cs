@@ -386,10 +386,10 @@ namespace Orleans.Runtime.Host
         }
 
         /// <summary>
-        /// Set the docker host endpoint address for this silo.
+        /// Set the real host endpoint address for this silo.
         /// </summary>
         /// <param name="endpoint">IP address and port of the main inter-silo socket connection.</param>
-        public void SetDockerHostEndpoint(IPEndPoint endpoint)
+        public void SetHostEndpoint(IPEndPoint endpoint)
         {
             logger.Info(ErrorCode.SiloSetSiloEndpoint, "Setting silo docker host endpoint address to {0}", endpoint);
             NodeConfig.HostEndpoint = endpoint;

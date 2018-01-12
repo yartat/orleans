@@ -93,6 +93,14 @@ namespace Orleans.Hosting
                     {
                         options.ProxyPort = nodeConfig.ProxyGatewayEndpoint.Port;
                     }
+                    if (nodeConfig.HostEndpoint != null)
+                    {
+                        options.HostIPAddress = nodeConfig.HostEndpoint.Address;
+                    }
+                    if (nodeConfig.HostProxyGatewayEndpoint != null)
+                    {
+                        options.ProxyPort = nodeConfig.HostProxyGatewayEndpoint.Port;
+                    }
                 });
 
             services.Configure<SerializationProviderOptions>(options =>

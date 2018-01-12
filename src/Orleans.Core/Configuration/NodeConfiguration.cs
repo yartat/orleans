@@ -358,8 +358,8 @@ namespace Orleans.Runtime.Configuration
 
         internal void InitNodeSettingsFromGlobals(ClusterConfiguration clusterConfiguration)
         {
-            this.IsPrimaryNode = this.Endpoint.Equals(clusterConfiguration.PrimaryNode);
-            this.IsSeedNode = clusterConfiguration.Globals.SeedNodes.Contains(this.Endpoint);
+            this.IsPrimaryNode = (this.HostEndpoint?.Equals(clusterConfiguration.PrimaryNode) ?? false) || this.Endpoint.Equals(clusterConfiguration.PrimaryNode);
+            this.IsSeedNode = clusterConfiguration.Globals.SeedNodes.Contains(this.HostEndpoint ?? this.Endpoint);
         }
 
         internal void Load(XmlElement root)
