@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Orleans.CodeGeneration;
-using Orleans.Runtime.Providers;
 using Microsoft.Extensions.Logging;
 
 namespace Orleans.Runtime
@@ -10,11 +9,11 @@ namespace Orleans.Runtime
     /// Contains list of cancellation token source corresponding to the tokens
     /// passed to the related grain activation.
     /// </summary>
-    internal class CancellationSourcesExtension : ICancellationSourcesExtension
+    internal class CancellationSourcesExtension : ICancellationSourcesExtension, IDisposable
     {
         private readonly ILogger _logger;
 
-        private readonly Interner<Guid, GrainCancellationToken> _cancellationTokens;
+        private Interner<Guid, GrainCancellationToken> _cancellationTokens;
         private static readonly TimeSpan _cleanupFrequency = TimeSpan.FromMinutes(7);
         private const int _defaultInternerCollectionSize = 31;
 
@@ -37,6 +36,17 @@ namespace Orleans.Runtime
             }
 
             return gct.Cancel();
+        }
+
+        public void Dispose()
+        {
+            if (_cancellationTokens != null)
+            {
+                _cancellationTokens.Dispose();
+                _cancellationTokens = null;
+            }
+
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>

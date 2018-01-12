@@ -249,8 +249,8 @@ namespace Orleans.Runtime
         /// <returns><c>true</c> if both grain references refer to the same grain (by grain identifier).</returns>
         public static bool operator ==(GrainReference reference1, GrainReference reference2)
         {
-            if (((object)reference1) == null)
-                return ((object)reference2) == null;
+            if (ReferenceEquals(reference1, null))
+                return ReferenceEquals(reference2, null);
 
             return reference1.Equals(reference2);
         }
@@ -264,10 +264,7 @@ namespace Orleans.Runtime
         /// <returns><c>false</c> if both grain references are resolved to the same grain (by grain identifier).</returns>
         public static bool operator !=(GrainReference reference1, GrainReference reference2)
         {
-            if (((object)reference1) == null)
-                return ((object)reference2) != null;
-
-            return !reference1.Equals(reference2);
+            return !(reference1 == reference2);
         }
 
         #region Protected members
@@ -456,10 +453,8 @@ namespace Orleans.Runtime
             {
                 info.AddValue(OBSERVER_ID_STR, observerId.ToParsableString(), typeof(string));
             }
-            string genericArg = String.Empty;
-            if (HasGenericArgument)
-                genericArg = genericArguments;
-            info.AddValue("GenericArguments", genericArg, typeof(string));
+
+            info.AddValue("GenericArguments", HasGenericArgument ? genericArguments : string.Empty, typeof(string));
         }
 
         // The special constructor is used to deserialize values. 

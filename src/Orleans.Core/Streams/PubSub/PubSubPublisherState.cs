@@ -48,11 +48,11 @@ namespace Orleans.Streams
 
         public static bool operator ==(PubSubPublisherState left, PubSubPublisherState right)
         {
-            return left.Equals(right);
+            return left?.Equals(right) ?? false;
         }
         public static bool operator !=(PubSubPublisherState left, PubSubPublisherState right)
         {
-            return !left.Equals(right);
+            return (!left?.Equals(right)) ?? true;
         }
         public override int GetHashCode()
         {

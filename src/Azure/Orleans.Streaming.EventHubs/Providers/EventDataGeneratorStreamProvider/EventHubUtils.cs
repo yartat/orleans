@@ -61,7 +61,7 @@ namespace Orleans.ServiceBus.Providers.Testing
         private Action<object, object> systemPropertiesSetter;
         private EventDataMethodCache()
         {
-            var ignore = new EventData(new byte[1]);
+            EventData ignore;
             var systemPropertiesName = nameof(ignore.SystemProperties);
             this.systemPropertiesSetter = typeof(EventData).GetProperty(systemPropertiesName).SetValue;
         }
@@ -107,7 +107,7 @@ namespace Orleans.ServiceBus.Providers.Testing
         private ConstructorInfo zeroArgConstructorInfo;
         private SystemPropertiesCollectionMethodCache()
         {
-            EventData ignore = new EventData(new byte[1]);
+            EventData ignore;
             var offSetPropertyName = nameof(ignore.SystemProperties.Offset);
             var sequenceNumberPropertyName = nameof(ignore.SystemProperties.SequenceNumber);
             var enqueueTimeUtcPropertyName = nameof(ignore.SystemProperties.EnqueuedTimeUtc);

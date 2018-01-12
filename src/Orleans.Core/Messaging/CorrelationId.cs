@@ -17,7 +17,7 @@ namespace Orleans.Runtime
 
         internal CorrelationId(string s)
         {
-            id = Int64.Parse(s);
+            id = long.Parse(s);
         }
 
         public CorrelationId()
@@ -37,7 +37,7 @@ namespace Orleans.Runtime
 
         public static CorrelationId GetNext()
         {
-            long val = System.Threading.Interlocked.Increment(ref nextToUse);
+            var val = System.Threading.Interlocked.Increment(ref nextToUse);
             return new CorrelationId(val);
         }
 
@@ -66,23 +66,22 @@ namespace Orleans.Runtime
             {
                 return ReferenceEquals(rhs, null);
             }
-            else if (ReferenceEquals(rhs, null))
-            {
-                return false;
-            }
-            else
-            {
-                return (rhs.id == lhs.id);
-            }
+
+            return lhs.Equals(rhs);
         }
 
         public static bool operator !=(CorrelationId lhs, CorrelationId rhs)
         {
-            return (rhs.id != lhs.id);
+            return !(rhs == lhs);
         }
 
         public int CompareTo(CorrelationId other)
         {
+            if (other == null)
+            {
+                return -1;
+            }
+
             return id.CompareTo(other.id);
         }
 

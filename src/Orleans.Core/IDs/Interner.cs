@@ -151,11 +151,10 @@ namespace Orleans
 
         public List<T> AllValues()
         {
-            List<T> values = new List<T>();
+            var values = new List<T>();
             foreach (var e in internCache)
             {
-                T value;
-                if (e.Value != null && e.Value.TryGetTarget(out value))
+                if (e.Value != null && e.Value.TryGetTarget(out var value))
                 {
                     values.Add(value);
                 }
@@ -167,17 +166,16 @@ namespace Orleans
         {
             foreach (var e in internCache)
             {
-                T ignored;
-                if (e.Value == null || e.Value.TryGetTarget(out ignored) == false)
+                if (e.Value == null || e.Value.TryGetTarget(out var __) == false)
                 {
-                    WeakReference<T> weak;
-                    internCache.TryRemove(e.Key, out weak);
+                    internCache.TryRemove(e.Key, out var _);
                 }
             }
         }
 
         public void Dispose()
         {
+            internCache.Clear();
             cacheCleanupTimer?.Dispose();
         }
     }

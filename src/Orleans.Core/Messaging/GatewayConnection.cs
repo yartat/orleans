@@ -30,7 +30,7 @@ namespace Orleans.Messaging
         }
         internal SiloAddress Silo { get; private set; }
 
-        private readonly GatewayClientReceiver receiver;
+        private GatewayClientReceiver receiver;
         private readonly TimeSpan openConnectionTimeout;
 
         internal Socket Socket { get; private set; }       // Shared by the receiver
@@ -306,6 +306,16 @@ namespace Orleans.Messaging
             {
                 Log.Warn(ErrorCode.ProxyClient_DroppingMsg, "Dropping message: {0}. Reason = {1}", msg, reason);
                 MessagingStatisticsGroup.OnDroppedSentMessage(msg);
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing)
+            {
+                receiver?.Dispose();
+                receiver = null;
             }
         }
 

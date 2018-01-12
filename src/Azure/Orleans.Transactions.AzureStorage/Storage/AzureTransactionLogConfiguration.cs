@@ -9,7 +9,7 @@ namespace Orleans.Transactions.AzureStorage
 
         internal void Copy(AzureTransactionLogConfiguration other)
         {
-            if (other == null) Copy(new AzureTransactionLogConfiguration());
+            if (other == null) other = new AzureTransactionLogConfiguration();
             this.ConnectionString = other.ConnectionString;
             this.TableName = other.TableName;
         }

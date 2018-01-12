@@ -12,11 +12,11 @@ namespace Orleans.Runtime.Messaging
     internal sealed class OutboundMessageQueue : IOutboundMessageQueue
     {
         private readonly Lazy<SiloMessageSender>[] senders;
-        private readonly SiloMessageSender pingSender;
-        private readonly SiloMessageSender systemSender;
         private readonly MessageCenter messageCenter;
         private readonly ILogger logger;
-        private bool stopped;
+        private volatile bool stopped;
+        private SiloMessageSender pingSender;
+        private SiloMessageSender systemSender;
 
         public int Count
         {
@@ -154,8 +154,12 @@ namespace Orleans.Runtime.Messaging
                 sender.Value.Stop();
                 sender.Value.Dispose();
             }
-            systemSender.Stop();
-            pingSender.Stop();
+            systemSender?.Stop();
+            systemSender?.Dispose();
+            systemSender = null;
+            pingSender?.Stop();
+            pingSender?.Dispose();
+            pingSender = null;
             GC.SuppressFinalize(this);
         }
 

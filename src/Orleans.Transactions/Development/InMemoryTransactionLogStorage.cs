@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Orleans.Transactions.Abstractions;
 
@@ -12,13 +13,10 @@ namespace Orleans.Transactions.Development
     public class InMemoryTransactionLogStorage : ITransactionLogStorage
     {
         private static readonly Task<CommitRecord> NullCommitRecordTask = Task.FromResult<CommitRecord>(null);
-
+        private readonly object _lockObject = new object();
         private long startRecordValue;
-
         private readonly List<CommitRecord> log;
-
         private int lastLogRecordIndex;
-
         private long nextLogSequenceNumber;
 
         public InMemoryTransactionLogStorage()
@@ -31,15 +29,18 @@ namespace Orleans.Transactions.Development
 
         public Task<CommitRecord> GetFirstCommitRecord()
         {
-            if (log.Count == 0)
+            lock (_lockObject)
             {
-                //
-                // Initialize LSN here, to be semantically correct with other providers.
-                //
+                if (log.Count == 0)
+                {
+                    //
+                    // Initialize LSN here, to be semantically correct with other providers.
+                    //
 
-                nextLogSequenceNumber = 1;
+                    nextLogSequenceNumber = 1;
 
-                return NullCommitRecordTask;
+                    return NullCommitRecordTask;
+                }
             }
 
             //
@@ -51,33 +52,36 @@ namespace Orleans.Transactions.Development
 
         public Task<CommitRecord> GetNextCommitRecord()
         {
-            if (log.Count <= lastLogRecordIndex)
+            lock (_lockObject)
             {
-                return NullCommitRecordTask;
-            }
+                if (log.Count <= lastLogRecordIndex)
+                {
+                    return NullCommitRecordTask;
+                }
 
-            nextLogSequenceNumber++;
+                nextLogSequenceNumber++;
+            }
 
             return Task.FromResult(log[lastLogRecordIndex++]);
         }
 
         public Task<long> GetStartRecord()
         {
-            startRecordValue = 50000;
+            Interlocked.Exchange(ref startRecordValue, 50000);
 
             return Task.FromResult(startRecordValue);
         }
 
         public Task UpdateStartRecord(long transactionId)
         {
-            startRecordValue = transactionId;
+            Interlocked.Exchange(ref startRecordValue, transactionId);
 
             return Task.CompletedTask;
         }
 
         public Task Append(IEnumerable<CommitRecord> commitRecords)
         {
-            lock (this)
+            lock (_lockObject)
             {
                 foreach (var commitRecord in commitRecords)
                 {
@@ -92,11 +96,11 @@ namespace Orleans.Transactions.Development
 
         public Task TruncateLog(long lsn)
         {
-            lock (this)
+            lock (_lockObject)
             {
                 var itemsToRemove = 0;
 
-                for (itemsToRemove = 0; itemsToRemove < log.Count; itemsToRemove++)
+                for (; itemsToRemove < log.Count; itemsToRemove++)
                 {
                     if (log[itemsToRemove].LSN > lsn)
                     {

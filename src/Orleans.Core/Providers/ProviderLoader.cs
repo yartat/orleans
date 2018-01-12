@@ -1,12 +1,11 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using System.Xml;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Orleans.Providers
@@ -33,8 +32,8 @@ namespace Orleans.Providers
     internal class ProviderLoader<TProvider>
         where TProvider : IProvider
     {
-        private readonly Dictionary<string, TProvider> providers;
-        private IDictionary<string, IProviderConfiguration> providerConfigs;
+        private readonly ConcurrentDictionary<string, TProvider> providers;
+        private ConcurrentDictionary<string, IProviderConfiguration> providerConfigs;
         private readonly ILogger logger;
         private readonly ILoggerFactory loggerFactory;
         private readonly LoadedProviderTypeLoaders loadedProviderTypeLoaders;
@@ -42,13 +41,15 @@ namespace Orleans.Providers
         {
             logger = loggerFactory.CreateLogger<ProviderLoader<TProvider>>();
             this.loggerFactory = loggerFactory;
-            providers = new Dictionary<string, TProvider>();
+            providers = new ConcurrentDictionary<string, TProvider>();
             this.loadedProviderTypeLoaders = loadedProviderTypeLoaders;
         }
 
         public void LoadProviders(IDictionary<string, IProviderConfiguration> configs, IProviderManager providerManager)
         {
-            providerConfigs = configs ?? new Dictionary<string, IProviderConfiguration>();
+            providerConfigs = configs != null ?
+                              new ConcurrentDictionary<string, IProviderConfiguration>(configs) :
+                              new ConcurrentDictionary<string, IProviderConfiguration>();
 
             foreach (IProviderConfiguration providerConfig in providerConfigs.Values)
             {
@@ -65,17 +66,12 @@ namespace Orleans.Providers
         public async Task RemoveProviders(IList<string> providerNames)
         {
             List<Task> tasks = new List<Task>();
-            int count = providers.Count;
-
-            if (providerConfigs != null) count = providerConfigs.Count;
-            foreach (string providerName in providerNames)
+            foreach (var providerName in providerNames)
             {
-                if (providerConfigs.ContainsKey(providerName)) providerConfigs.Remove(providerName);
-
-                if (providers.ContainsKey(providerName))
+                providerConfigs.TryRemove(providerName, out var _);
+                if (providers.TryRemove(providerName, out var provider))
                 {
-                    tasks.Add(providers[providerName].Close());
-                    providers.Remove(providerName);
+                    tasks.Add(provider.Close());
                 }
             }
             
@@ -86,9 +82,8 @@ namespace Orleans.Providers
         {
             foreach (IProviderConfiguration providerConfig in providerConfigs.Values)
             {
-                TProvider provider;
                 ProviderConfiguration fullConfig = (ProviderConfiguration) providerConfig;
-                if (providers.TryGetValue(providerConfig.Name, out provider))
+                if (providers.TryGetValue(providerConfig.Name, out var _))
                 {
                     logger.Debug(ErrorCode.Provider_ProviderLoadedOk, 
                         "Provider of type {0} name {1} located ok.", 
@@ -107,11 +102,7 @@ namespace Orleans.Providers
 
         public async Task InitProviders(IProviderRuntime providerRuntime)
         {
-            Dictionary<string, TProvider> copy; 
-            lock (providers)
-            {
-                copy = providers.ToDictionary(p => p.Key, p => p.Value);
-            }
+            var copy = providers.ToDictionary(p => p.Key, p => p.Value);
 
             foreach (var provider in copy)
             {
@@ -134,72 +125,57 @@ namespace Orleans.Providers
         // used only for testing
         internal void AddProvider(string name, TProvider provider, IProviderConfiguration config)
         {
-            lock (providers)
-            {
-                providers.Add(name, provider);
-            }
+            providers.TryAdd(name, provider);
         }
 
         internal int GetNumLoadedProviders()
         {
-            lock (providers)
-            {
-                return providers.Count;
-            }
+            return providers.Count;
         }
 
         public TProvider GetProvider(string name, bool caseInsensitive = false)
         {
-            TProvider provider;
-            if (!TryGetProvider(name, out provider, caseInsensitive))
+            if (!TryGetProvider(name, out var provider, caseInsensitive))
             {
                 throw new KeyNotFoundException(string.Format("Cannot find provider of type {0} with Name={1}", typeof(TProvider).FullName, name));
             }
+
             return provider;
         }
 
         public bool TryGetProvider(string name, out TProvider provider, bool caseInsensitive = false)
         {
-            lock (providers)
-            {
-                if (providers.TryGetValue(name, out provider)) return provider != null;
-                if (!caseInsensitive) return provider != null;
+            if (providers.TryGetValue(name, out provider)) return provider != null;
+            if (!caseInsensitive) return provider != null;
 
-                // Try all lower case
-                if (!providers.TryGetValue(name.ToLowerInvariant(), out provider))
-                {
-                    // Try all upper case
-                    providers.TryGetValue(name.ToUpperInvariant(), out provider);
-                }
+            // Try all lower case
+            if (!providers.TryGetValue(name.ToLowerInvariant(), out provider))
+            {
+                // Try all upper case
+                providers.TryGetValue(name.ToUpperInvariant(), out provider);
             }
+
             return provider != null;
         }
 
         public IList<TProvider> GetProviders()
         {
-            lock (providers)
-            {
-                return providers.Values.ToList();
-            }
+            return providers.Values.ToList();
         }
 
         public TProvider GetDefaultProvider(string defaultProviderName)
         {
-            lock (providers)
+            // Use provider named "Default" if present
+            if (!providers.TryGetValue(defaultProviderName, out var provider))
             {
-                TProvider provider;
-                // Use provider named "Default" if present
-                if (!providers.TryGetValue(defaultProviderName, out provider))
-                {
-                    // Otherwise, if there is only a single provider listed, use that
-                    if (providers.Count == 1) provider = providers.First().Value;
-                }
-                if (provider != null) return provider;
-
-                string errMsg = "Cannot find default provider for " + typeof(TProvider);
-                logger.Error(ErrorCode.Provider_NoDefaultProvider, errMsg);
-                throw new InvalidOperationException(errMsg);
+                // Otherwise, if there is only a single provider listed, use that
+                if (providers.Count == 1) provider = providers.First().Value;
             }
+            if (provider != null) return provider;
+
+            string errMsg = "Cannot find default provider for " + typeof(TProvider);
+            logger.Error(ErrorCode.Provider_NoDefaultProvider, errMsg);
+            throw new InvalidOperationException(errMsg);
         }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes")]
@@ -207,12 +183,7 @@ namespace Orleans.Providers
         {
             // First, figure out the provider type name
             var typeName = TypeUtils.GetFullName(t);
-            IList<String> providerNames;
-
-            lock (providers)
-            {
-                providerNames = providers.Keys.ToList();
-            }
+            var providerNames = providers.Keys.ToList();
 
             // Now see if we have any config entries for that type 
             // If there's no config entry, then we don't load the type
