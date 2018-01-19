@@ -626,7 +626,7 @@ namespace Orleans.Runtime.MembershipService
                 var entry = tuple.Item1;
                 var siloAddress = entry.SiloAddress;
                 
-                if (siloAddress.Generation.Equals(MyAddress.Generation))
+                if (siloAddress.Generation.Equals((MyHostAddress ?? MyAddress).Generation))
                 {
                     if (entry.Status == SiloStatus.Dead)
                     {
@@ -647,7 +647,7 @@ namespace Orleans.Runtime.MembershipService
                     MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : string.Empty, siloAddress.ToLongString());
 
                 // Temporal paradox - There is an older clone of this silo in the membership table
-                if (siloAddress.Generation < MyAddress.Generation)
+                if (siloAddress.Generation < (MyHostAddress ?? MyAddress).Generation)
                 {
                     logger.Warn(ErrorCode.MembershipDetectedOlder, "Detected older version of myself - Marking other older clone as Dead -- Current Me={0}{1} Older Me={2}, Old entry= {3}",
                         MyAddress.ToLongString(), MyHostAddress != null ? $"(hosted in {MyHostAddress.ToLongString()})" : string.Empty, 
@@ -655,7 +655,7 @@ namespace Orleans.Runtime.MembershipService
                     // Declare older clone of me as Dead.
                     silosToDeclareDead.Add(tuple);   //return DeclareDead(entry, eTag, tableVersion);
                 }
-                else if (siloAddress.Generation > MyAddress.Generation)
+                else if (siloAddress.Generation > (MyHostAddress ?? MyAddress).Generation)
                 {
                     // I am the older clone - Newer version of me should survive - I need to kill myself
                     var msg = string.Format("Detected newer version of myself - I am the older clone so will commit suicide -- Current Me={0}{1} Newer Me={2}, Current entry= {3}",

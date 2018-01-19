@@ -54,7 +54,7 @@ namespace Orleans.Runtime.Counters
                 var configurableMetricsDataPublisher = metricsDataPublisher as IConfigurableSiloMetricsDataPublisher;
                 if (configurableMetricsDataPublisher != null)
                 {
-                    var gateway = this.siloDetails.GatewayAddress?.Endpoint;
+                    var gateway = (this.siloDetails.HostGatewayAddress ?? this.siloDetails.GatewayAddress)?.Endpoint;
                     configurableMetricsDataPublisher.AddConfiguration(
                         this.siloDetails.ClusterId, true, this.siloDetails.Name, this.siloDetails.HostSiloAddress ?? this.siloDetails.SiloAddress, gateway, this.siloDetails.DnsHostName);
                 }
@@ -63,7 +63,7 @@ namespace Orleans.Runtime.Counters
             else if (useAzureTable)
             {
                 // Hook up to publish silo metrics to Azure storage table
-                var gateway = this.siloDetails.GatewayAddress?.Endpoint;
+                var gateway = (this.siloDetails.HostGatewayAddress ?? this.siloDetails.GatewayAddress)?.Endpoint;
                 var metricsDataPublisher = AssemblyLoader.LoadAndCreateInstance<ISiloMetricsDataPublisher>(Constants.ORLEANS_STATISTICS_AZURESTORAGE, logger, silo.Services);
                 await metricsDataPublisher.Init(this.siloDetails.ClusterId, silo.GlobalConfig.DataConnectionString, this.siloDetails.HostSiloAddress ?? this.siloDetails.SiloAddress, this.siloDetails.Name, gateway, this.siloDetails.DnsHostName);
                 MetricsTable.MetricsDataPublisher = metricsDataPublisher;
@@ -93,7 +93,7 @@ namespace Orleans.Runtime.Counters
                 var configurableStatsDataPublisher = statsDataPublisher as IConfigurableStatisticsPublisher;
                 if (configurableStatsDataPublisher != null)
                 {
-                    var gateway = this.siloDetails.GatewayAddress?.Endpoint;
+                    var gateway = (this.siloDetails.HostGatewayAddress ?? this.siloDetails.GatewayAddress)?.Endpoint;
                     configurableStatsDataPublisher.AddConfiguration(
                         this.siloDetails.ClusterId, true, this.siloDetails.Name, this.siloDetails.HostSiloAddress ?? this.siloDetails.SiloAddress, gateway, this.siloDetails.DnsHostName);
                 }

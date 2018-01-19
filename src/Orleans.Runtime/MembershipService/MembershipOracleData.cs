@@ -49,7 +49,7 @@ namespace Orleans.Runtime.MembershipService
             MyAddress = siloDetails.SiloAddress;
             MyHostAddress = siloDetails.HostSiloAddress;
             MyHostname = siloDetails.DnsHostName;
-            MyProxyPort = siloDetails.GatewayAddress?.Endpoint?.Port ?? 0;
+            MyProxyPort = (siloDetails.HostGatewayAddress ?? siloDetails.GatewayAddress)?.Endpoint?.Port ?? 0;
             SiloName = siloDetails.Name;
             this.multiClusterActive = multiClusterOptions.HasMultiClusterNetwork;
             this.maxMultiClusterGateways = multiClusterOptions.MaxMultiClusterGateways;

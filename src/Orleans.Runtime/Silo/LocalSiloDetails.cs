@@ -12,6 +12,7 @@ namespace Orleans.Runtime
         private readonly Lazy<SiloAddress> siloAddressLazy;
         private readonly Lazy<SiloAddress> siloHostAddressLazy;
         private readonly Lazy<SiloAddress> gatewayAddressLazy;
+        private readonly Lazy<SiloAddress> hostGatewayAddressLazy;
 
         public LocalSiloDetails(
             IOptions<SiloOptions> siloOptions,
@@ -27,9 +28,12 @@ namespace Orleans.Runtime
             this.siloHostAddressLazy = new Lazy<SiloAddress>(() =>
             {
                 var hostEndpoint = ResolveHostEndpoint(endpointOptions);
-                return hostEndpoint != null ? SiloAddress.New(hostEndpoint, SiloAddress.AllocateNewGeneration()) : null;
+                return hostEndpoint != null ? SiloAddress.New(hostEndpoint, SiloAddress.Generation) : null;
             });
-            this.gatewayAddressLazy = new Lazy<SiloAddress>(() => endpointOptions.ProxyPort != 0 ? SiloAddress.New(new IPEndPoint((this.HostSiloAddress ?? this.SiloAddress).Endpoint.Address, endpointOptions.ProxyPort), 0) : null);
+            this.gatewayAddressLazy = new Lazy<SiloAddress>(() => endpointOptions.ProxyPort != 0 ? SiloAddress.New(new IPEndPoint(this.SiloAddress.Endpoint.Address, endpointOptions.ProxyPort), 0) : null);
+            this.hostGatewayAddressLazy = new Lazy<SiloAddress>(() => endpointOptions.HostProxyPort != 0 && HostSiloAddress != null ? 
+                SiloAddress.New(new IPEndPoint(this.HostSiloAddress.Endpoint.Address, endpointOptions.HostProxyPort), 0) : 
+                null);
         }
 
         private static IPEndPoint ResolveEndpoint(EndpointOptions options)
@@ -52,7 +56,7 @@ namespace Orleans.Runtime
         {
             if (options.HostIPAddress != null)
             {
-                return new IPEndPoint(options.HostIPAddress, options.Port);
+                return new IPEndPoint(options.HostIPAddress, options.HostPort != 0 ? options.HostPort : options.Port);
             }
 
             return null;
@@ -75,5 +79,8 @@ namespace Orleans.Runtime
 
         /// <inheritdoc />
         public SiloAddress GatewayAddress => this.gatewayAddressLazy.Value;
+
+        /// <inheritdoc />
+        public SiloAddress HostGatewayAddress => this.hostGatewayAddressLazy.Value;
     }
 }

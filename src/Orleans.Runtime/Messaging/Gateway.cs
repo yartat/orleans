@@ -56,7 +56,7 @@ namespace Orleans.Runtime.Messaging
             clients = new ConcurrentDictionary<GrainId, ClientState>();
             clientSockets = new ConcurrentDictionary<Socket, ClientState>();
             clientsReplyRoutingCache = new ClientsReplyRoutingCache(messagingOptions.ResponseTimeout);
-            this.gatewayAddress = siloDetails.GatewayAddress;
+            this.gatewayAddress = siloDetails.HostGatewayAddress ?? siloDetails.GatewayAddress;
             lockable = new object();
         }
 

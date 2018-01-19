@@ -200,6 +200,7 @@ namespace TestServiceFabric
             public SiloAddress SiloAddress { get; set; }
             public SiloAddress HostSiloAddress { get; set; }
             public SiloAddress GatewayAddress { get; }
+            public SiloAddress HostGatewayAddress { get; }
         }
 
         private void AssertStatus(SiloStatus expected)

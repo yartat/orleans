@@ -775,6 +775,7 @@ namespace UnitTests.SchedulerTests
             public SiloAddress SiloAddress { get; set; }
             public SiloAddress HostSiloAddress { get; set; }
             public SiloAddress GatewayAddress { get; set; }
+            public SiloAddress HostGatewayAddress { get; set; }
             public string Name { get; set; } = Guid.NewGuid().ToString();
             public string ClusterId { get; }
         }

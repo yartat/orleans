@@ -96,10 +96,11 @@ namespace Orleans.Hosting
                     if (nodeConfig.HostEndpoint != null)
                     {
                         options.HostIPAddress = nodeConfig.HostEndpoint.Address;
+                        options.HostPort = nodeConfig.HostEndpoint.Port;
                     }
-                    if (nodeConfig.HostProxyGatewayEndpoint != null)
+                    if (options.HostProxyPort == 0 && nodeConfig.HostProxyGatewayEndpoint != null)
                     {
-                        options.ProxyPort = nodeConfig.HostProxyGatewayEndpoint.Port;
+                        options.HostProxyPort = nodeConfig.HostProxyGatewayEndpoint.Port;
                     }
                 });
 

@@ -48,7 +48,7 @@ namespace Orleans.Hosting.ServiceFabric
                             info.HostSilo = details.HostSiloAddress.ToParsableString();
                             if (details.GatewayAddress != null)
                             {
-                                info.Gateway = details.GatewayAddress.ToParsableString();
+                                info.Gateway = (details.HostGatewayAddress ?? details.GatewayAddress).ToParsableString();
                             }
                         });
                     });

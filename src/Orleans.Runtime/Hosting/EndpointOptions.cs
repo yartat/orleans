@@ -28,10 +28,19 @@ namespace Orleans.Hosting
         public int Port { get; set; }
 
         /// <summary>
+        /// The port this host silo uses for silo-to-silo communication.
+        /// </summary>
+        public int HostPort { get; set; }
+
+        /// <summary>
         /// The port this silo uses for silo-to-client (gateway) communication. Specify 0 to disable gateway functionality.
         /// </summary>
         public int ProxyPort { get; set; }
 
+        /// <summary>
+        /// The port this host silo uses for silo-to-client (gateway) communication. Specify 0 to disable gateway functionality.
+        /// </summary>
+        public int HostProxyPort { get; set; }
         //public bool BindToAny { get; set; }
     }
 }
