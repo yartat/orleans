@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Orleans.Hosting;
 using Orleans.Runtime.Configuration;
 using Orleans.Runtime.GrainDirectory;
 using Orleans.Runtime.Messaging;
@@ -19,7 +21,7 @@ namespace Orleans.Runtime
         private readonly ILocalGrainDirectory grainDirectory;
         private readonly SiloAddress myAddress;
         private readonly OrleansTaskScheduler scheduler;
-        private readonly ClusterConfiguration orleansConfig;
+        private readonly SiloMessagingOptions messagingOptions;
         private readonly ILogger logger;
         private Gateway gateway;
         private IDisposable refreshTimer;
@@ -29,15 +31,15 @@ namespace Orleans.Runtime
             ILocalSiloDetails siloDetails,
             ILocalGrainDirectory dir,
             OrleansTaskScheduler scheduler,
-            ClusterConfiguration config,
+            IOptions<SiloMessagingOptions> messagingOptions,
             ILoggerFactory loggerFactory)
             : base(Constants.ClientObserverRegistrarId, siloDetails.SiloAddress, siloDetails.HostSiloAddress, loggerFactory)
         {
-            grainDirectory = dir;
-            myAddress = siloDetails.HostSiloAddress ?? siloDetails.SiloAddress;
+            this.grainDirectory = dir;
+            this.myAddress = siloDetails.HostSiloAddress ?? siloDetails.SiloAddress;
             this.scheduler = scheduler;
-            orleansConfig = config;
-            logger = loggerFactory.CreateLogger<ClientObserverRegistrar>();
+            this.messagingOptions = messagingOptions.Value;
+            this.logger = loggerFactory.CreateLogger<ClientObserverRegistrar>();
         }
 
         internal void SetGateway(Gateway gateway)
@@ -45,20 +47,20 @@ namespace Orleans.Runtime
             this.gateway = gateway;
             // Only start ClientRefreshTimer if this silo has a gateway.
             // Need to start the timer in the system target context.
-            scheduler.QueueAction(Start, this.SchedulingContext).Ignore();
+            this.scheduler.QueueAction(this.Start, this.SchedulingContext).Ignore();
         }
 
         private void Start()
         {
             var random = new SafeRandom();
-            var randomOffset = random.NextTimeSpan(orleansConfig.Globals.ClientRegistrationRefresh);
+            var randomOffset = random.NextTimeSpan(this.messagingOptions.ClientRegistrationRefresh);
             this.refreshTimer = this.RegisterTimer(
                 this.OnClientRefreshTimer,
                 null,
                 randomOffset,
-                orleansConfig.Globals.ClientRegistrationRefresh,
+                this.messagingOptions.ClientRegistrationRefresh,
                 "ClientObserverRegistrar.ClientRefreshTimer");
-            if (logger.IsEnabled(LogLevel.Debug)) { logger.Debug("Client registrar service started successfully."); }
+            if (this.logger.IsEnabled(LogLevel.Debug)) { this.logger.Debug("Client registrar service started successfully."); }
         }
 
         internal void ClientAdded(GrainId clientId)
@@ -66,8 +68,8 @@ namespace Orleans.Runtime
             // Use a ActivationId that is hashed from clientId, and not random ActivationId.
             // That way, when we refresh it in the directiry, it's the same one.
             var addr = GetClientActivationAddress(clientId);
-            scheduler.QueueTask(
-                () => ExecuteWithRetries(() => grainDirectory.RegisterAsync(addr, singleActivation:false), ErrorCode.ClientRegistrarFailedToRegister, String.Format("Directory.RegisterAsync {0} failed.", addr)),
+            this.scheduler.QueueTask(
+                () => ExecuteWithRetries(() => this.grainDirectory.RegisterAsync(addr, singleActivation:false), ErrorCode.ClientRegistrarFailedToRegister, string.Format("Directory.RegisterAsync {0} failed.", addr)),
                 this.SchedulingContext)
                         .Ignore();
         }
@@ -75,8 +77,8 @@ namespace Orleans.Runtime
         internal void ClientDropped(GrainId clientId)
         {
             var addr = GetClientActivationAddress(clientId);
-            scheduler.QueueTask(
-                () => ExecuteWithRetries(() => grainDirectory.UnregisterAsync(addr, Orleans.GrainDirectory.UnregistrationCause.Force), ErrorCode.ClientRegistrarFailedToUnregister, String.Format("Directory.UnRegisterAsync {0} failed.", addr)), 
+            this.scheduler.QueueTask(
+                () => ExecuteWithRetries(() => this.grainDirectory.UnregisterAsync(addr, Orleans.GrainDirectory.UnregistrationCause.Force), ErrorCode.ClientRegistrarFailedToUnregister, string.Format("Directory.UnRegisterAsync {0} failed.", addr)), 
                 this.SchedulingContext)
                         .Ignore();
         }
@@ -97,35 +99,35 @@ namespace Orleans.Runtime
                     },
                     AsyncExecutorWithRetries.INFINITE_RETRIES, // Do not limit the number of on-error retries, control it via "maxExecutionTime"
                     (exc, i) => true, // Retry on all errors.         
-                    orleansConfig.Globals.ClientRegistrationRefresh, // "maxExecutionTime"
+                    this.messagingOptions.ClientRegistrationRefresh, // "maxExecutionTime"
                     new ExponentialBackoff(EXP_BACKOFF_ERROR_MIN, EXP_BACKOFF_ERROR_MAX, EXP_BACKOFF_STEP)); // how long to wait between error retries
             }
             catch (Exception exc)
             {
-                logger.Error(errorCode, errorStr, exc);
+                this.logger.Error(errorCode, errorStr, exc);
             }
         }
 
         private async Task OnClientRefreshTimer(object data)
         {
-            if (gateway == null) return;
+            if (this.gateway == null) return;
             try
             {
-                ICollection<GrainId> clients = gateway.GetConnectedClients().ToList();
+                ICollection<GrainId> clients = this.gateway.GetConnectedClients().ToList();
                 List<Task> tasks = new List<Task>();
                 foreach (GrainId clientId in clients)
                 {
                     var addr = GetClientActivationAddress(clientId);
-                    Task task = grainDirectory.RegisterAsync(addr, singleActivation:false).
-                        LogException(logger, ErrorCode.ClientRegistrarFailedToRegister_2, String.Format("Directory.RegisterAsync {0} failed.", addr));
+                    Task task = this.grainDirectory.RegisterAsync(addr, singleActivation:false).
+                        LogException(this.logger, ErrorCode.ClientRegistrarFailedToRegister_2, string.Format("Directory.RegisterAsync {0} failed.", addr));
                     tasks.Add(task);
                 }
                 await Task.WhenAll(tasks);
             }
             catch (Exception exc)
             {
-                logger.Error(ErrorCode.ClientRegistrarTimerFailed, 
-                    String.Format("OnClientRefreshTimer has thrown an exceptions."), exc);
+                this.logger.Error(ErrorCode.ClientRegistrarTimerFailed, 
+                    string.Format("OnClientRefreshTimer has thrown an exceptions."), exc);
             }
         }
 
@@ -134,10 +136,10 @@ namespace Orleans.Runtime
             // Need to pick a unique deterministic ActivationId for this client.
             // We store it in the grain directory and there for every GrainId we use ActivationId as a key
             // so every GW needs to behave as a different "activation" with a different ActivationId (its not enough that they have different SiloAddress)
-            string stringToHash = clientId.ToParsableString() + myAddress.Endpoint + myAddress.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string stringToHash = clientId.ToParsableString() + this.myAddress.Endpoint + this.myAddress.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
             Guid hash = Utils.CalculateGuidHash(stringToHash);
             UniqueKey key = UniqueKey.NewKey(hash);
-            return ActivationAddress.GetAddress(myAddress, clientId, ActivationId.GetActivationId(key));
+            return ActivationAddress.GetAddress(this.myAddress, clientId, ActivationId.GetActivationId(key));
         }
 
         public void SiloStatusChangeNotification(SiloAddress updatedSilo, SiloStatus status)
@@ -146,9 +148,9 @@ namespace Orleans.Runtime
                 return;
 
             if (Equals(updatedSilo, this.Silo))
-                refreshTimer?.Dispose();
+                this.refreshTimer?.Dispose();
 
-            scheduler.QueueTask(() => OnClientRefreshTimer(null), SchedulingContext).Ignore();
+            this.scheduler.QueueTask(() => OnClientRefreshTimer(null), this.SchedulingContext).Ignore();
         }
     }
 }

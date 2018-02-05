@@ -13,6 +13,7 @@ using Xunit;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.TestingHost.Utils;
+using Orleans.Hosting;
 
 namespace UnitTests.RemindersTest
 {
@@ -25,10 +26,13 @@ namespace UnitTests.RemindersTest
         private readonly IReminderTable remindersTable;
         protected ILoggerFactory loggerFactory;
         protected IOptions<SiloOptions> siloOptions;
+        protected IOptions<StorageOptions> storageOptions;
+        protected IOptions<AdoNetOptions> adoNetOptions;
         protected const string testDatabaseName = "OrleansReminderTest";//for relational storage
-        
+
         protected ReminderTableTestsBase(ConnectionStringFixture fixture, TestEnvironmentFixture clusterFixture, LoggerFilterOptions filters)
         {
+            fixture.InitializeConnectionStringAccessor(GetConnectionString);
             loggerFactory = TestingUtils.CreateDefaultLoggerFactory($"{this.GetType()}.log", filters);
             this.ClusterFixture = clusterFixture;
             logger = loggerFactory.CreateLogger<ReminderTableTestsBase>();
@@ -36,8 +40,9 @@ namespace UnitTests.RemindersTest
             var clusterId = "test-" + serviceId;
 
             logger.Info("ClusterId={0}", clusterId);
-            siloOptions = Options.Create(new SiloOptions { ClusterId = clusterId, ServiceId = serviceId });
-            fixture.InitializeConnectionStringAccessor(GetConnectionString);
+            this.siloOptions = Options.Create(new SiloOptions { ClusterId = clusterId, ServiceId = serviceId });
+            this.storageOptions = Options.Create(new StorageOptions { DataConnectionStringForReminders = fixture.ConnectionString });
+            this.adoNetOptions = Options.Create(new AdoNetOptions() { InvariantForReminders = GetAdoInvariant() });
 
             var globalConfiguration = new GlobalConfiguration
             {
@@ -48,7 +53,7 @@ namespace UnitTests.RemindersTest
             };
 
             var rmndr = CreateRemindersTable();
-            rmndr.Init(globalConfiguration).WithTimeout(TimeSpan.FromMinutes(1)).Wait();
+            rmndr.Init().WithTimeout(TimeSpan.FromMinutes(1)).Wait();
             remindersTable = rmndr;
         }
 
@@ -70,10 +75,16 @@ namespace UnitTests.RemindersTest
 
         protected async Task RemindersParallelUpsert()
         {
-            var upserts = await Task.WhenAll(Enumerable.Range(0, 50).Select(i =>
+            var upserts = await Task.WhenAll(Enumerable.Range(0, 5).Select(i =>
             {
                 var reminder = CreateReminder(MakeTestGrainReference(), i.ToString());
-                return Task.WhenAll(Enumerable.Range(1, 5).Select(j => remindersTable.UpsertRow(reminder)));
+                return Task.WhenAll(Enumerable.Range(1, 5).Select(j =>
+                {
+                    return RetryHelper.RetryOnExceptionAsync<string>(5, RetryOperation.Sigmoid, async () =>
+                    {
+                        return await remindersTable.UpsertRow(reminder);
+                    });
+                }));
             }));
             Assert.DoesNotContain(upserts, i => i.Distinct().Count() != 5);
         }
@@ -84,7 +95,7 @@ namespace UnitTests.RemindersTest
             await remindersTable.UpsertRow(reminder);
 
             var readReminder = await remindersTable.ReadRow(reminder.GrainRef, reminder.ReminderName);
-            
+
             string etagTemp = reminder.ETag = readReminder.ETag;
 
             Assert.Equal(JsonConvert.SerializeObject(readReminder), JsonConvert.SerializeObject(reminder));
@@ -108,7 +119,12 @@ namespace UnitTests.RemindersTest
             await Task.WhenAll(Enumerable.Range(1, iterations).Select(async i =>
             {
                 GrainReference grainRef = MakeTestGrainReference();
-                await remindersTable.UpsertRow(CreateReminder(grainRef, i.ToString()));
+
+                await RetryHelper.RetryOnExceptionAsync<Task>(10, RetryOperation.Sigmoid, async () =>
+                {
+                    await remindersTable.UpsertRow(CreateReminder(grainRef, i.ToString()));
+                    return Task.CompletedTask;
+                });
             }));
 
             var rows = await remindersTable.ReadRows(0, uint.MaxValue);
@@ -120,7 +136,7 @@ namespace UnitTests.RemindersTest
             Assert.Equal(rows.Reminders.Count, iterations);
 
             var remindersHashes = rows.Reminders.Select(r => r.GrainRef.GetUniformHashCode()).ToArray();
-            
+
             SafeRandom random = new SafeRandom();
 
             await Task.WhenAll(Enumerable.Range(0, iterations).Select(i =>

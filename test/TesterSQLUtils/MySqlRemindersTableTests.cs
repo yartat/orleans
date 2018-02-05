@@ -30,7 +30,7 @@ namespace UnitTests.RemindersTest
 
         protected override IReminderTable CreateRemindersTable()
         {
-            return new SqlReminderTable(this.ClusterFixture.Services.GetRequiredService<IGrainReferenceConverter>(), this.siloOptions);
+            return new SqlReminderTable(this.ClusterFixture.Services.GetRequiredService<IGrainReferenceConverter>(), this.siloOptions, this.adoNetOptions, this.storageOptions);
         }
 
         protected override string GetAdoInvariant()
@@ -53,7 +53,7 @@ namespace UnitTests.RemindersTest
         [SkippableFact]
         public async Task RemindersTable_MySql_RemindersRange()
         {
-            await RemindersRange();
+            await RemindersRange(iterations: 50);
         }
 
         [SkippableFact]

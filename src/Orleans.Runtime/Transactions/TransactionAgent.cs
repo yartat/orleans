@@ -8,6 +8,8 @@ using Orleans.Runtime;
 using Orleans.Concurrency;
 using Orleans.Runtime.Configuration;
 using DateTime = System.DateTime;
+using Orleans.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Orleans.Transactions
 {
@@ -117,7 +119,7 @@ namespace Orleans.Transactions
 
         //metrics related
         private TransactionAgentMetrics metrics;
-        public TransactionAgent(ILocalSiloDetails siloDetails, ITransactionManagerService tmService, ILoggerFactory loggerFactory, ITelemetryProducer telemetryProducer, Factory<NodeConfiguration> getNodeConfig)
+        public TransactionAgent(ILocalSiloDetails siloDetails, ITransactionManagerService tmService, ILoggerFactory loggerFactory, ITelemetryProducer telemetryProducer, IOptions<SiloStatisticsOptions> statisticsOptions)
             : base(Constants.TransactionAgentSystemTargetId, siloDetails.SiloAddress, siloDetails.HostSiloAddress, loggerFactory)
         {
             logger = loggerFactory.CreateLogger<TransactionAgent>();
@@ -132,7 +134,7 @@ namespace Orleans.Transactions
             transactionCommitQueue = new ConcurrentQueue<TransactionInfo>();
             commitCompletions = new ConcurrentDictionary<long, TaskCompletionSource<bool>>();
             outstandingCommits = new HashSet<long>();
-            this.metrics = new TransactionAgentMetrics(telemetryProducer, getNodeConfig().StatisticsMetricsTableWriteInterval);
+            this.metrics = new TransactionAgentMetrics(telemetryProducer, statisticsOptions.Value.MetricsTableWriteInterval);
         }
 
         #region ITransactionAgent
@@ -297,7 +299,7 @@ namespace Orleans.Transactions
                         foreach (var aborted in this.abortedTransactions)
                         {
                             if (aborted.Key < this.abortLowerBound)
-                        {
+                            {
                                 long ignored;
                                 this.abortedTransactions.TryRemove(aborted.Key, out ignored);
                             }
@@ -329,12 +331,12 @@ namespace Orleans.Transactions
                 }
 
                 var commitResults = commitResponse.CommitResult;
-  
+
                 // reply to clients with the outcomes we received from the TM.
                 foreach (var completedId in commitResults.Keys)
                 {
                     outstandingCommits.Remove(completedId);
-  
+
                     TaskCompletionSource<bool> completion;
                     if (commitCompletions.TryRemove(completedId, out completion))
                     {

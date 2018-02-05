@@ -34,11 +34,11 @@ namespace Orleans.Runtime.Messaging
         internal bool IsBlockingApplicationMessages { get; private set; }
         internal ISiloPerformanceMetrics Metrics { get; private set; }
         
-        public bool IsProxying { get { return Gateway != null; } }
+        public bool IsProxying { get { return this.Gateway != null; } }
 
         public bool TryDeliverToProxy(Message msg)
         {
-            return msg.TargetGrain.IsClient && Gateway != null && Gateway.TryDeliverToProxy(msg);
+            return msg.TargetGrain.IsClient && this.Gateway != null && this.Gateway.TryDeliverToProxy(msg);
         }
         
         // This is determined by the IMA but needed by the OMS, and so is kept here in the message center itself.
@@ -64,43 +64,43 @@ namespace Orleans.Runtime.Messaging
             this.Initialize(siloDetails.SiloAddress.Endpoint, siloDetails.HostSiloAddress?.Endpoint, siloDetails.SiloAddress.Generation, messagingOptions, networkingOptions, metrics);
             if (siloDetails.GatewayAddress != null)
             {
-                Gateway = gatewayFactory(this);
+                this.Gateway = gatewayFactory(this);
             }
         }
 
         private void Initialize(IPEndPoint here, IPEndPoint hostEndpoint, int generation, IOptions<SiloMessagingOptions> messagingOptions, IOptions<NetworkingOptions> networkingOptions, ISiloPerformanceMetrics metrics = null)
         {
-            if(log.IsEnabled(LogLevel.Trace)) log.Trace("Starting initialization.");
+            if(this.log.IsEnabled(LogLevel.Trace)) this.log.Trace("Starting initialization.");
 
-            SocketManager = new SocketManager(networkingOptions, this.loggerFactory);
-            ima = new IncomingMessageAcceptor(this, here, SocketDirection.SiloToSilo, this.messageFactory, this.serializationManager, this.executorService, this.loggerFactory);
-            MyAddress = SiloAddress.New((IPEndPoint)ima.AcceptingSocket.LocalEndPoint, generation);
+            this.SocketManager = new SocketManager(networkingOptions, this.loggerFactory);
+            this.ima = new IncomingMessageAcceptor(this, here, SocketDirection.SiloToSilo, this.messageFactory, this.serializationManager, this.executorService, this.loggerFactory);
+            this.MyAddress = SiloAddress.New((IPEndPoint)this.ima.AcceptingSocket.LocalEndPoint, generation);
             if (hostEndpoint != null)
             {
-                MyHostAddress = SiloAddress.New(hostEndpoint, generation);
+                this.MyHostAddress = SiloAddress.New(hostEndpoint, generation);
             }
 
-            InboundQueue = new InboundMessageQueue(this.loggerFactory);
-            OutboundQueue = new OutboundMessageQueue(this, messagingOptions, this.serializationManager, this.executorService, this.loggerFactory);
-            Metrics = metrics;
-            
-            sendQueueLengthCounter = IntValueStatistic.FindOrCreate(StatisticNames.MESSAGE_CENTER_SEND_QUEUE_LENGTH, () => SendQueueLength);
-            receiveQueueLengthCounter = IntValueStatistic.FindOrCreate(StatisticNames.MESSAGE_CENTER_RECEIVE_QUEUE_LENGTH, () => ReceiveQueueLength);
+            this.InboundQueue = new InboundMessageQueue(this.loggerFactory);
+            this.OutboundQueue = new OutboundMessageQueue(this, messagingOptions, this.serializationManager, this.executorService, this.loggerFactory);
+            this.Metrics = metrics;
 
-            if (log.IsEnabled(LogLevel.Trace)) log.Trace("Completed initialization.");
+            this.sendQueueLengthCounter = IntValueStatistic.FindOrCreate(StatisticNames.MESSAGE_CENTER_SEND_QUEUE_LENGTH, () => this.SendQueueLength);
+            this.receiveQueueLengthCounter = IntValueStatistic.FindOrCreate(StatisticNames.MESSAGE_CENTER_RECEIVE_QUEUE_LENGTH, () => this.ReceiveQueueLength);
+
+            if (this.log.IsEnabled(LogLevel.Trace)) this.log.Trace("Completed initialization.");
         }
 
         public void Start()
         {
-            IsBlockingApplicationMessages = false;
-            ima.Start();
-            OutboundQueue.Start();
+            this.IsBlockingApplicationMessages = false;
+            this.ima.Start();
+            this.OutboundQueue.Start();
         }
 
         public void StartGateway(ClientObserverRegistrar clientRegistrar)
         {
-            if (Gateway != null)
-                Gateway.Start(clientRegistrar);
+            if (this.Gateway != null)
+                this.Gateway.Start(clientRegistrar);
         }
 
         public void PrepareToStop()
@@ -109,65 +109,65 @@ namespace Orleans.Runtime.Messaging
 
         public void Stop()
         {
-            IsBlockingApplicationMessages = true;
+            this.IsBlockingApplicationMessages = true;
 
             try
             {
-                ima.Stop();
+                this.ima.Stop();
             }
             catch (Exception exc)
             {
-                log.Error(ErrorCode.Runtime_Error_100108, "Stop failed.", exc);
+                this.log.Error(ErrorCode.Runtime_Error_100108, "Stop failed.", exc);
             }
 
             StopAcceptingClientMessages();
 
             try
             {
-                OutboundQueue.Stop();
+                this.OutboundQueue.Stop();
             }
             catch (Exception exc)
             {
-                log.Error(ErrorCode.Runtime_Error_100110, "Stop failed.", exc);
+                this.log.Error(ErrorCode.Runtime_Error_100110, "Stop failed.", exc);
             }
 
             try
             {
-                SocketManager.Stop();
+                this.SocketManager.Stop();
             }
             catch (Exception exc)
             {
-                log.Error(ErrorCode.Runtime_Error_100111, "Stop failed.", exc);
+                this.log.Error(ErrorCode.Runtime_Error_100111, "Stop failed.", exc);
             }
         }
 
         public void StopAcceptingClientMessages()
         {
-            if (log.IsEnabled(LogLevel.Debug)) log.Debug("StopClientMessages");
-            if (Gateway == null) return;
+            if (this.log.IsEnabled(LogLevel.Debug)) this.log.Debug("StopClientMessages");
+            if (this.Gateway == null) return;
 
             try
             {
-                Gateway.Stop();
+                this.Gateway.Stop();
             }
-            catch (Exception exc) { log.Error(ErrorCode.Runtime_Error_100109, "Stop failed.", exc); }
-            Gateway = null;
+            catch (Exception exc) { this.log.Error(ErrorCode.Runtime_Error_100109, "Stop failed.", exc); }
+            this.Gateway = null;
         }
 
         public Action<Message> RerouteHandler
         {
             set
             {
-                if (rerouteHandler != null)
+                if (this.rerouteHandler != null)
                     throw new InvalidOperationException("MessageCenter RerouteHandler already set");
-                rerouteHandler = value;
+                this.rerouteHandler = value;
             }
         }
 
         public void RerouteMessage(Message message)
         {
-            if (rerouteHandler != null)
-                rerouteHandler(message);
+            if (this.rerouteHandler != null)
+                this.rerouteHandler(message);
             else
                 SendMessage(message);
         }
@@ -176,7 +176,7 @@ namespace Orleans.Runtime.Messaging
         {
             set
             {
-                ima.SniffIncomingMessage = value;
+                this.ima.SniffIncomingMessage = value;
             }
         }
 
@@ -185,7 +185,7 @@ namespace Orleans.Runtime.Messaging
         public void SendMessage(Message msg)
         {
             // Note that if we identify or add other grains that are required for proper stopping, we will need to treat them as we do the membership table grain here.
-            if (IsBlockingApplicationMessages && (msg.Category == Message.Categories.Application) && (msg.Result != Message.ResponseTypes.Rejection)
+            if (this.IsBlockingApplicationMessages && (msg.Category == Message.Categories.Application) && (msg.Result != Message.ResponseTypes.Rejection)
                 && !Constants.SystemMembershipTableId.Equals(msg.TargetGrain))
             {
                 // Drop the message on the floor if it's an application message that isn't a rejection
@@ -193,42 +193,43 @@ namespace Orleans.Runtime.Messaging
             else
             {
                 if (msg.SendingSilo == null)
-                    msg.SendingSilo = MyHostAddress ?? MyAddress;
-                OutboundQueue.SendMessage(msg);
+                    msg.SendingSilo = this.MyHostAddress ?? this.MyAddress;
+                this.OutboundQueue.SendMessage(msg);
             }
         }
 
         internal void SendRejection(Message msg, Message.RejectionTypes rejectionType, string reason)
         {
             MessagingStatisticsGroup.OnRejectedMessage(msg);
-            if (string.IsNullOrEmpty(reason)) reason = string.Format("Rejection from silo {0}{1} - Unknown reason.", 
-                MyAddress, MyHostAddress != null ? $"(hosted in {MyHostAddress})" : string.Empty);
+            if (string.IsNullOrEmpty(reason)) reason = string.Format("Rejection from silo {0}{1} - Unknown reason.",
+                this.MyAddress, this.MyHostAddress != null ? $"(hosted in {this.MyHostAddress})" : string.Empty);
             Message error = this.messageFactory.CreateRejectionResponse(msg, rejectionType, reason);
             // rejection msgs are always originated in the local silo, they are never remote.
-            InboundQueue.PostMessage(error);
+            this.InboundQueue.PostMessage(error);
         }
 
         public Message WaitMessage(Message.Categories type, CancellationToken ct)
         {
-            return InboundQueue.WaitMessage(type);
+            return this.InboundQueue.WaitMessage(type);
         }
 
         public void Dispose()
         {
-            if (ima != null)
+            if (this.ima != null)
             {
-                ima.Dispose();
-                ima = null;
+                this.ima.Dispose();
+                this.ima = null;
             }
 
-            OutboundQueue.Dispose();
+            this.InboundQueue?.Dispose();
+            this.OutboundQueue?.Dispose();
 
             GC.SuppressFinalize(this);
         }
 
-        public int SendQueueLength { get { return OutboundQueue.Count; } }
+        public int SendQueueLength { get { return this.OutboundQueue.Count; } }
 
-        public int ReceiveQueueLength { get { return InboundQueue.Count; } }
+        public int ReceiveQueueLength { get { return this.InboundQueue.Count; } }
 
         /// <summary>
         /// Indicates that application messages should be blocked from being sent or received.
@@ -240,8 +241,8 @@ namespace Orleans.Runtime.Messaging
         /// </summary>
         public void BlockApplicationMessages()
         {
-            if(log.IsEnabled(LogLevel.Debug)) log.Debug("BlockApplicationMessages");
-            IsBlockingApplicationMessages = true;
+            if(this.log.IsEnabled(LogLevel.Debug)) this.log.Debug("BlockApplicationMessages");
+            this.IsBlockingApplicationMessages = true;
         }
     }
 }

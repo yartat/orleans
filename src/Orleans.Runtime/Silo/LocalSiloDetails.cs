@@ -28,12 +28,11 @@ namespace Orleans.Runtime
             this.siloHostAddressLazy = new Lazy<SiloAddress>(() =>
             {
                 var hostEndpoint = ResolveHostEndpoint(endpointOptions);
-                return hostEndpoint != null ? SiloAddress.New(hostEndpoint, SiloAddress.Generation) : null;
+                return hostEndpoint != null ? SiloAddress.New(hostEndpoint, this.SiloAddress.Generation) : null;
             });
             this.gatewayAddressLazy = new Lazy<SiloAddress>(() => endpointOptions.ProxyPort != 0 ? SiloAddress.New(new IPEndPoint(this.SiloAddress.Endpoint.Address, endpointOptions.ProxyPort), 0) : null);
-            this.hostGatewayAddressLazy = new Lazy<SiloAddress>(() => endpointOptions.HostProxyPort != 0 && HostSiloAddress != null ? 
-                SiloAddress.New(new IPEndPoint(this.HostSiloAddress.Endpoint.Address, endpointOptions.HostProxyPort), 0) : 
-                null);
+            this.hostGatewayAddressLazy = new Lazy<SiloAddress>(() => endpointOptions.HostProxyPort != 0 && this.HostSiloAddress != null ? 
+                SiloAddress.New(new IPEndPoint(this.HostSiloAddress.Endpoint.Address, endpointOptions.HostProxyPort), 0) : null);
         }
 
         private static IPEndPoint ResolveEndpoint(EndpointOptions options)
@@ -46,7 +45,7 @@ namespace Orleans.Runtime
             else
             {
                 // TODO: refactor this out of ClusterConfiguration
-                ipAddress = ClusterConfiguration.ResolveIPAddress(options.HostNameOrIPAddress, null, AddressFamily.InterNetwork).GetAwaiter().GetResult();
+                ipAddress = ConfigUtilities.ResolveIPAddress(options.HostNameOrIPAddress, null, AddressFamily.InterNetwork).GetAwaiter().GetResult();
             }
 
             return new IPEndPoint(ipAddress, options.Port);

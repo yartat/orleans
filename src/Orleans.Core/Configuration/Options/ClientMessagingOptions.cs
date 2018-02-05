@@ -1,4 +1,7 @@
-﻿namespace Orleans.Hosting
+using System.Collections.Generic;
+using Microsoft.Extensions.Options;
+
+namespace Orleans.Hosting
 {
     /// <summary>
     /// Specifies global messaging options that are client related.
@@ -13,5 +16,29 @@
         ///  If this attribute is not specified, then Math.Pow(2, 13) is used.
         /// </summary>
         public int ClientSenderBuckets { get; set; } = 8192;
+    }
+
+    public class ClientMessagingOptionFormatter : MessagingOptionsFormatter, IOptionFormatter<ClientMessagingOptions>
+    {
+        public string Category { get; }
+
+        public string Name => nameof(ClientMessagingOptions);
+
+        private ClientMessagingOptions options;
+        public ClientMessagingOptionFormatter(IOptions<ClientMessagingOptions> messageOptions)
+            : base(messageOptions.Value)
+        {
+            options = messageOptions.Value;
+        }
+
+        public IEnumerable<string> Format()
+        {
+            List<string> format = base.FormatSharedOptions();
+            format.AddRange(new List<string>
+            {
+                OptionFormattingUtilities.Format(nameof(options.ClientSenderBuckets), options.ClientSenderBuckets),
+            });
+            return format;
+        }
     }
 }
