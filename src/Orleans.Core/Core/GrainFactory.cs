@@ -28,8 +28,8 @@ namespace Orleans
         /// <summary>
         /// The cache of typed system target references.
         /// </summary>
-        private readonly Dictionary<Tuple<GrainId, Type>, Dictionary<SiloAddress, ISystemTarget>> typedSystemTargetReferenceCache =
-                    new Dictionary<Tuple<GrainId, Type>, Dictionary<SiloAddress, ISystemTarget>>();
+        private readonly ConcurrentDictionary<Tuple<GrainId, Type>, ConcurrentDictionary<SiloAddress, ISystemTarget>> typedSystemTargetReferenceCache =
+                    new ConcurrentDictionary<Tuple<GrainId, Type>, ConcurrentDictionary<SiloAddress, ISystemTarget>>();
 
         /// <summary>
         /// The cache of type metadata.
@@ -157,13 +157,7 @@ namespace Orleans
                 throw new ArgumentException($"The provided object must implement '{interfaceTypeInfo.FullName}'.", nameof(obj));
             }
 
-            IGrainMethodInvoker invoker;
-            if (!this.invokers.TryGetValue(interfaceType, out invoker))
-            {
-                invoker = this.MakeInvoker(interfaceType);
-                this.invokers.TryAdd(interfaceType, invoker);
-            }
-
+            var invoker = this.invokers.GetOrAdd(interfaceType, type => this.MakeInvoker(interfaceType));
             return this.Cast<TGrainObserverInterface>(this.runtimeClient.CreateObjectReference(obj, invoker));
         }
 
@@ -184,8 +178,7 @@ namespace Orleans
             }
 
             var grainTypeResolver = this.runtimeClient.GrainTypeResolver;
-            GrainClassData implementation;
-            if (!grainTypeResolver.TryGetGrainClassData(interfaceType, out implementation, grainClassNamePrefix))
+            if (!grainTypeResolver.TryGetGrainClassData(interfaceType, out var implementation, grainClassNamePrefix))
             {
                 var loadedAssemblies = grainTypeResolver.GetLoadedGrainAssemblies();
                 var assembliesString = string.IsNullOrEmpty(loadedAssemblies)
@@ -232,13 +225,8 @@ namespace Orleans
         /// <returns>A reference to <paramref name="grain"/> which implements <paramref name="interfaceType"/>.</returns>
         public object Cast(IAddressable grain, Type interfaceType)
         {
-            GrainReferenceCaster caster;
-            if (!this.casters.TryGetValue(interfaceType, out caster))
-            {
-                // Create and cache a caster for the interface type.
-                caster = this.casters.GetOrAdd(interfaceType, this.MakeCaster);
-            }
-
+            // Create and cache a caster for the interface type.
+            var caster = this.casters.GetOrAdd(interfaceType, this.MakeCaster);
             return caster(grain);
         }
 
@@ -267,33 +255,11 @@ namespace Orleans
         public TGrainInterface GetSystemTarget<TGrainInterface>(GrainId grainId, SiloAddress destination)
             where TGrainInterface : ISystemTarget
         {
-            Dictionary<SiloAddress, ISystemTarget> cache;
             Tuple<GrainId, Type> key = Tuple.Create(grainId, typeof(TGrainInterface));
-
-            lock (this.typedSystemTargetReferenceCache)
-            {
-                if (this.typedSystemTargetReferenceCache.ContainsKey(key)) cache = this.typedSystemTargetReferenceCache[key];
-                else
-                {
-                    cache = new Dictionary<SiloAddress, ISystemTarget>();
-                    this.typedSystemTargetReferenceCache[key] = cache;
-                }
-            }
-
-            ISystemTarget reference;
-            lock (cache)
-            {
-                if (cache.ContainsKey(destination))
-                {
-                    reference = cache[destination];
-                }
-                else
-                {
-                    reference = this.Cast<TGrainInterface>(GrainReference.FromGrainId(grainId, this.GrainReferenceRuntime, null, destination));
-                    cache[destination] = reference; // Store for next time
-                }
-            }
-
+            var cache = this.typedSystemTargetReferenceCache.GetOrAdd(key, tuple => new ConcurrentDictionary<SiloAddress, ISystemTarget>());
+            var reference = cache.GetOrAdd(
+                destination,
+                address => this.Cast<TGrainInterface>(GrainReference.FromGrainId(grainId, this.GrainReferenceRuntime, null, destination)));
             return (TGrainInterface)reference;
         }
 
