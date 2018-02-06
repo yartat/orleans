@@ -92,23 +92,11 @@ namespace Orleans
         /// <returns>Object with specified key - either previous cached copy or newly created</returns>
         public T FindOrCreate(K key, Func<K, T> creatorFunc)
         {
-            T result;
-            WeakReference<T> cacheEntry;
-
             // Attempt to get the existing value from cache.
-            internCache.TryGetValue(key, out cacheEntry);
-
-            // If no cache entry exists, create and insert a new one using the creator function.
-            if (cacheEntry == null)
-            {
-                result = creatorFunc(key);
-                cacheEntry = new WeakReference<T>(result);
-                internCache[key] = cacheEntry;
-                return result;
-            }
+            var cacheEntry = internCache.GetOrAdd(key, k => new WeakReference<T>(creatorFunc(key)));
 
             // If a cache entry did exist, determine if it still holds a valid value.
-            cacheEntry.TryGetTarget(out result);
+            cacheEntry.TryGetTarget(out var result);
             if (result == null)
             {
                 // Create new object and ensure the entry is still valid by re-inserting it into the cache.
