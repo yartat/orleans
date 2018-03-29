@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 
 SET CMDHOME=%~dp0.
 if "%BUILD_FLAGS%"=="" SET BUILD_FLAGS=/m /v:m
-if not defined BuildConfiguration SET BuildConfiguration=Debug
+if not defined BuildConfiguration SET BuildConfiguration=Release
 
 :: Clear the 'Platform' env variable for this session, as it's a per-project setting within the build, and
 :: misleading value (such as 'MCD' in HP PCs) may lead to build breakage (issue: #69).
@@ -14,8 +14,10 @@ call Ensure-DotNetSdk.cmd
 SET SOLUTION=%CMDHOME%\Orleans.sln
 
 :: Set DateTime suffix for debug builds
-if "%BuildConfiguration%" == "Debug" for /f %%j in ('powershell -NoProfile -ExecutionPolicy ByPass Get-Date -format "{yyyyMMddHHmm}"') do set DATE_SUFFIX=%%j
-if "%BuildConfiguration%" == "Debug" SET AdditionalConfigurationProperties=;VersionDateSuffix=%DATE_SUFFIX%
+::if "%BuildConfiguration%" == "Debug" for /f %%j in ('powershell -NoProfile -ExecutionPolicy ByPass Get-Date -format "{yyyyMMddHHmm}"') do set DATE_SUFFIX=%%j
+::if "%BuildConfiguration%" == "Debug" SET AdditionalConfigurationProperties=;VersionDateSuffix=%DATE_SUFFIX%
+for /f %%j in ('powershell -NoProfile -ExecutionPolicy ByPass Get-Date -format "{yyyyMMddHHmm}"') do set DATE_SUFFIX=%%j
+SET AdditionalConfigurationProperties=;VersionDateSuffix=%DATE_SUFFIX%
 
 if "%1" == "Pack" GOTO :Package
 
